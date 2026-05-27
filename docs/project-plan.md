@@ -1,9 +1,9 @@
 # 📅 개인 일정 관리 앱 — 프로젝트 계획서
 
-> **문서 버전**: v1.8
+> **문서 버전**: v1.9
 > **최초 작성일**: 2026-05-26
-> **최종 수정일**: 2026-05-27 (최종)
-> **상태**: 🟢 Phase 1 준비 완료
+> **최종 수정일**: 2026-05-27
+> **상태**: 🟢 Phase 1 완료, Phase 2 준비 중
 
 ---
 
@@ -430,8 +430,8 @@ find ~/pocketbase-backups -mtime +30 -exec rm -rf {} +
 | 항목 | 값 |
 |------|-----|
 | PocketBase 주소 (내부) | `http://127.0.0.1:8090` |
-| PocketBase 주소 (Tailscale) | `http://<맥미니-Tailscale-IP>:8090` |
-| 관리자 UI | `http://<주소>:8090/_/` |
+| PocketBase 주소 (Tailscale) | `http://<TAILSCALE_IP>:8090` |
+| 관리자 UI | `http://<TAILSCALE_IP>:8090/_/` |
 | 인증 방식 | Superuser 토큰 (앱 실행 시 자동 로그인) |
 
 ---
@@ -441,7 +441,7 @@ find ~/pocketbase-backups -mtime +30 -exec rm -rf {} +
 | 단계 | 내용 | 산출물 | 상태 |
 |------|------|--------|------|
 | Phase 0 | 계획서 작성 및 설계 확정 | project-plan.md | ✅ 완료 |
-| Phase 1 | 맥 미니 PocketBase 설치 + 자동실행 + 백업 설정 | 동작하는 서버 | ⬜ 대기 |
+| Phase 1 | 맥 미니 PocketBase 설치 + 자동실행 + 백업 설정 | 동작하는 서버 | ✅ 완료 |
 | Phase 2 | React 웹 프로젝트 생성 + PocketBase 연동 + 사이드바 레이아웃 | 웹 프로젝트 뼈대 | ⬜ 대기 |
 | Phase 3 | Todo & 일정 CRUD + 카테고리 + 중요도 + 등록 폼 | 핵심 기능 완성 | ⬜ 대기 |
 | Phase 4 | 캘린더 뷰 구현 (월간·주간·일간) | 캘린더 화면 | ⬜ 대기 |
@@ -460,7 +460,7 @@ find ~/pocketbase-backups -mtime +30 -exec rm -rf {} +
 
 ## 11. 미결 사항
 
-- [ ] 맥 미니 Tailscale IP 확인 (Phase 1에서 확인)
+- [x] 맥 미니 Tailscale IP 확인 (개인 메모 별도 보관)
 - [x] 핸드폰 기종 확인 → **Android** → 위젯 모듈: `react-native-android-widget`
 
 ---
@@ -722,3 +722,4 @@ Delete      : @request.auth.id != ""
 | v1.6 | 2026-05-27 | 화면 구조·네비게이션 확정. 검색 추가. Phase 14까지 재구성 |
 | v1.7 | 2026-05-27 | UX 세부 확정 (모달 편집, 반복 다이얼로그, 시간 블록, Todo 완료 UX 등) |
 | v1.8 | 2026-05-27 | 최종 검토 후 수정: expire 만료 표시 명세, 종일 알림 제한, 마감 없는 Todo 알림 비활성화, 소카테고리 독립 색상, categories.default_importance 추가, 일정 자동 삭제(기본 180일) 추가, 카테고리 사이드바 항목 추가, 모바일 검색 돋보기 방식 확정, 반복 알림 매 회차 발송 확정, deadline_precision 저장 방식 명세. 섹션 5 일정 vs Todo 비교표 추가 |
+| v1.9 | 2026-05-27 | Phase 1 완료: PocketBase v0.38.2 설치, launchd 자동실행, 백업 스크립트, Tailscale IP 확인 |
