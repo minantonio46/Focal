@@ -1,2 +1,74 @@
-# Focal
-Personal schedule management app — PocketBase + React + React Native + Electron
+# 📅 Focal
+
+> 개인용 일정 관리 앱 — PC와 모바일 실시간 연동, 완전 무료
+
+---
+
+## 개요
+
+| 항목 | 내용 |
+|------|------|
+| 프로젝트명 | Focal |
+| 목적 | PC와 모바일에서 실시간 연동되는 개인 일정 관리 |
+| 사용자 | 1인 (개인 전용) |
+| 비용 | 완전 무료 |
+
+---
+
+## 기술 스택
+
+| 구분 | 기술 |
+|------|------|
+| 백엔드/DB | PocketBase (Mac mini M4에서 자체 호스팅) |
+| 외부 접속 | Tailscale VPN |
+| PC 웹 | React + Vite + Tailwind CSS |
+| PC 데스크탑 | Electron |
+| 모바일 | React Native (Expo) |
+| 상태 관리 | Zustand |
+
+---
+
+## 주요 기능
+
+- 📋 할 일(Todo) 관리 — 우선순위, 마감일, 카테고리
+- 📆 캘린더 뷰 — 월간 / 주간 / 일간
+- 🔁 반복 일정
+- 🔔 알림 / 리마인더
+- 🔄 실시간 동기화 + 오프라인 지원
+- 🖥️ Electron 바탕화면 위젯 (3가지 형태 전환)
+- 📱 모바일 홈화면 위젯 (소 / 중 / 대)
+- 🌙 다크 모드 지원
+
+---
+
+## 프로젝트 구조 (예정)
+
+```
+Focal/
+├── docs/
+│   └── project-plan.md   ← 프로젝트 계획서
+├── web/                  ← React 웹 앱
+├── desktop/              ← Electron 앱
+├── mobile/               ← React Native 앱
+└── server/               ← PocketBase 설정 및 스크립트
+```
+
+---
+
+## 개발 진행 상황
+
+| Phase | 내용 | 상태 |
+|-------|------|------|
+| 0 | 계획서 작성 및 기술 스택 확정 | ✅ 완료 |
+| 1 | PocketBase 설치 + 서버 설정 | ⬜ 대기 |
+| 2 | React 웹 프로젝트 + PocketBase 연동 | ⬜ 대기 |
+| 3 | Todo CRUD 구현 | ⬜ 대기 |
+| 4 | 캘린더 뷰 구현 | ⬜ 대기 |
+| 5 | 반복 일정 구현 | ⬜ 대기 |
+| 6 | 알림/리마인더 구현 | ⬜ 대기 |
+| 7 | 오프라인 캐시 구현 | ⬜ 대기 |
+| 8 | UI 다크모드 polish | ⬜ 대기 |
+| 9 | Electron 데스크탑 앱 | ⬜ 대기 |
+| 10 | React Native 모바일 앱 | ⬜ 대기 |
+| 11 | 홈화면 위젯 | ⬜ 대기 |
+| 12 | 전체 테스트 및 마무리 | ⬜ 대기 |
