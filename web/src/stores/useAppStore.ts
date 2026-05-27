@@ -1,17 +1,13 @@
 import { create } from 'zustand'
-import { Schedule, Category, Settings } from '../types'
+import type { Schedule, Category, Settings } from '../types'
 
 interface AppStore {
-  // 데이터
   schedules: Schedule[]
   categories: Category[]
   settings: Settings | null
-
-  // 상태
   isOnline: boolean
   isLoading: boolean
 
-  // 액션
   setSchedules: (schedules: Schedule[]) => void
   setCategories: (categories: Category[]) => void
   setSettings: (settings: Settings) => void
