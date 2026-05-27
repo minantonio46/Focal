@@ -8,11 +8,13 @@ import DetailModal from '../components/modal/DetailModal'
 
 type FilterType = 'incomplete' | 'complete' | 'all'
 type SortType = 'time' | 'score'
+type ViewType = 'todo' | 'schedule'
 
 export default function TodoPage() {
   const { schedules, setSchedules, categories } = useAppStore()
   const [filter, setFilter] = useState<FilterType>('incomplete')
   const [sort, setSort] = useState<SortType>('time')
+  const [view, setView] = useState<ViewType>('todo')
   const [showForm, setShowForm] = useState(false)
   const [selectedItem, setSelectedItem] = useState<Schedule | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -47,13 +49,15 @@ export default function TodoPage() {
     setSchedules(schedules.filter(s => s.id !== id))
   }
 
-  const todos = schedules.filter(s => s.is_todo)
+  const items = schedules.filter(s => view === 'todo' ? s.is_todo : !s.is_todo)
 
-  const filtered = todos.filter(s => {
-    if (filter === 'incomplete') return !s.is_completed
-    if (filter === 'complete') return s.is_completed
-    return true
-  })
+  const filtered = view === 'todo'
+    ? items.filter(s => {
+        if (filter === 'incomplete') return !s.is_completed
+        if (filter === 'complete') return s.is_completed
+        return true
+      })
+    : items
 
   const urgencyScore = (s: Schedule) => {
     if (!s.start_at) return 1
@@ -75,35 +79,54 @@ export default function TodoPage() {
     return 0
   })
 
-  const withDeadline = sort === 'time' ? sorted.filter(s => s.start_at) : sorted
-  const withoutDeadline = sort === 'time' ? sorted.filter(s => !s.start_at) : []
+  const withDeadline = sort === 'time' && view === 'todo' ? sorted.filter(s => s.start_at) : sorted
+  const withoutDeadline = sort === 'time' && view === 'todo' ? sorted.filter(s => !s.start_at) : []
 
   return (
     <div className="p-6 max-w-2xl">
+      {/* 헤더 */}
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">Todo 목록</h2>
+        <h2 className="text-2xl font-bold">목록</h2>
         <button
           onClick={() => setShowForm(true)}
           className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
         >
-          + 추가
+          + {view === 'todo' ? 'Todo' : '일정'}
         </button>
       </div>
 
-      <div className="flex gap-4 mb-4">
-        <div className="flex gap-1 bg-gray-800 rounded-lg p-1">
-          {(['incomplete', 'complete', 'all'] as FilterType[]).map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-1 rounded-md text-sm transition-colors ${
-                filter === f ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              {f === 'incomplete' ? '미완료' : f === 'complete' ? '완료' : '전체'}
-            </button>
-          ))}
-        </div>
+      {/* Todo / 일정 뷰 전환 */}
+      <div className="flex gap-1 bg-gray-800 rounded-lg p-1 w-fit mb-4">
+        {(['todo', 'schedule'] as ViewType[]).map(v => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className={`px-4 py-1.5 rounded-md text-sm transition-colors ${
+              view === v ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            {v === 'todo' ? 'Todo' : '일정'}
+          </button>
+        ))}
+      </div>
+
+      {/* 필터 & 정렬 */}
+      <div className="flex gap-3 mb-4 flex-wrap">
+        {view === 'todo' && (
+          <div className="flex gap-1 bg-gray-800 rounded-lg p-1">
+            {(['incomplete', 'complete', 'all'] as FilterType[]).map(f => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-3 py-1 rounded-md text-sm transition-colors ${
+                  filter === f ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                {f === 'incomplete' ? '미완료' : f === 'complete' ? '완료' : '전체'}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex gap-1 bg-gray-800 rounded-lg p-1">
           {(['time', 'score'] as SortType[]).map(s => (
             <button
@@ -119,6 +142,7 @@ export default function TodoPage() {
         </div>
       </div>
 
+      {/* 목록 */}
       {isLoading ? (
         <div className="text-gray-500 text-sm py-8 text-center">불러오는 중...</div>
       ) : sorted.length === 0 ? (
@@ -130,7 +154,7 @@ export default function TodoPage() {
               key={item.id}
               item={item}
               categories={categories}
-              onComplete={handleComplete}
+              onComplete={view === 'todo' ? handleComplete : undefined}
               onDelete={handleDelete}
               onClick={() => setSelectedItem(item)}
             />
@@ -147,7 +171,7 @@ export default function TodoPage() {
                   key={item.id}
                   item={item}
                   categories={categories}
-                  onComplete={handleComplete}
+                  onComplete={view === 'todo' ? handleComplete : undefined}
                   onDelete={handleDelete}
                   onClick={() => setSelectedItem(item)}
                 />
@@ -164,7 +188,7 @@ export default function TodoPage() {
             setShowForm(false)
             await loadSchedules()
           }}
-          defaultIsTodo={true}
+          defaultIsTodo={view === 'todo'}
         />
       )}
 

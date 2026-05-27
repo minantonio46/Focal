@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import type { Schedule, Category } from '../../types'
+import { formatDateTime } from '../../lib/dateUtils'
+import useAppStore from '../../stores/useAppStore'
 import ScheduleFormModal from './ScheduleFormModal'
 
 interface Props {
@@ -12,12 +14,16 @@ interface Props {
 
 export default function DetailModal({ item, categories, onClose, onUpdate, onDelete }: Props) {
   const [showEdit, setShowEdit] = useState(false)
+  const { settings } = useAppStore()
+  const timeFormat = settings?.time_format ?? '24h'
 
-  const cat = categories.find(c => c.id === item.category_id)
+  const cat    = categories.find(c => c.id === item.category_id)
   const subCat = categories.find(c => c.id === item.sub_category_id)
 
-  const isExpired = item.expire_type === 'expire' && item.start_at
-    && new Date(item.start_at) < new Date() && !item.is_completed
+  const isExpired = item.expire_type === 'expire'
+    && !!item.start_at
+    && new Date(item.start_at) < new Date()
+    && !item.is_completed
 
   if (showEdit) {
     return (
@@ -35,11 +41,15 @@ export default function DetailModal({ item, categories, onClose, onUpdate, onDel
         className="bg-gray-900 rounded-xl w-full max-w-md"
         onClick={e => e.stopPropagation()}
       >
+        {/* 헤더 */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
           <div className="flex items-center gap-2">
             <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">
               {item.is_todo ? 'Todo' : '일정'}
             </span>
+            {item.is_all_day && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">종일</span>
+            )}
             {isExpired && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">만료</span>
             )}
@@ -48,43 +58,55 @@ export default function DetailModal({ item, categories, onClose, onUpdate, onDel
         </div>
 
         <div className="px-5 py-4 flex flex-col gap-3">
+          {/* 제목 */}
           <h3 className={`text-lg font-semibold ${item.is_completed ? 'line-through text-gray-500' : ''}`}>
             {item.title}
           </h3>
 
+          {/* 카테고리 */}
           {(cat || subCat) && (
             <div className="flex items-center gap-2">
               {cat && (
-                <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: cat.color + '33', color: cat.color }}>
+                <span className="text-xs px-2 py-1 rounded-full"
+                  style={{ backgroundColor: cat.color + '33', color: cat.color }}>
                   {cat.name}
                 </span>
               )}
               {subCat && (
-                <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: subCat.color + '33', color: subCat.color }}>
+                <span className="text-xs px-2 py-1 rounded-full"
+                  style={{ backgroundColor: subCat.color + '33', color: subCat.color }}>
                   {subCat.name}
                 </span>
               )}
             </div>
           )}
 
+          {/* 시간 */}
           {item.start_at && (
             <div className="flex items-center gap-2 text-sm text-gray-400">
               <span>🕐</span>
               <span>
-                {new Date(item.start_at).toLocaleString('ko-KR', {
-                  year: 'numeric', month: 'short', day: 'numeric',
-                  hour: '2-digit', minute: '2-digit'
-                })}
-                {!item.is_todo && item.end_at && ` ~ ${new Date(item.end_at).toLocaleString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`}
+                {item.is_all_day
+                  ? new Date(item.start_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })
+                  : formatDateTime(item.start_at, timeFormat)
+                }
+                {!item.is_todo && item.end_at && !item.is_all_day && (
+                  ` ~ ${formatDateTime(item.end_at, timeFormat)}`
+                )}
+                {!item.is_todo && item.end_at && item.is_all_day && (
+                  ` ~ ${new Date(item.end_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}`
+                )}
               </span>
             </div>
           )}
 
+          {/* 중요도 */}
           <div className="flex items-center gap-2 text-sm text-gray-400">
             <span>⭐</span>
             <span>중요도 {item.importance.toFixed(1)}</span>
           </div>
 
+          {/* 장소 */}
           {item.location && (
             <div className="flex items-center gap-2 text-sm text-gray-400">
               <span>📍</span>
@@ -92,6 +114,7 @@ export default function DetailModal({ item, categories, onClose, onUpdate, onDel
             </div>
           )}
 
+          {/* 메모 */}
           {item.description && (
             <div className="bg-gray-800 rounded-lg px-4 py-3 text-sm text-gray-300 whitespace-pre-wrap">
               {item.description}
@@ -99,6 +122,7 @@ export default function DetailModal({ item, categories, onClose, onUpdate, onDel
           )}
         </div>
 
+        {/* 푸터 */}
         <div className="flex gap-2 px-5 py-4 border-t border-gray-700">
           <button
             onClick={() => onDelete(item.id)}
