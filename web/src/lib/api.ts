@@ -1,9 +1,15 @@
 import pb, { withAuth } from './pocketbase'
 import type { Schedule, Category, Settings, Notification } from '../types'
+import {
+  cacheGetSchedules, cacheSetSchedules, cachePutSchedule, cacheDeleteSchedule,
+  cacheGetCategories, cacheSetCategories, cachePutCategory, cacheDeleteCategory,
+  cacheGetSettings, cacheSetSettings,
+} from './offlineCache'
+import { enqueue } from './syncQueue'
 
 // requestKey: null → PocketBase SDK 자동취소 비활성화
 
-/** Date → "YYYY-MM-DD" (로컀 시각 기준) */
+/** Date → "YYYY-MM-DD" (로컬 시각 기준) */
 function localDateStr(d: Date): string {
   return [
     d.getFullYear(),
@@ -22,7 +28,7 @@ function localDateStr(d: Date): string {
  * occDate (YYYY-MM-DD):
  *   - _isVirtual: _occurrenceDate
  *   - 예외 레코드: exception_date
- *   - 부모 레코드 직접: start_at 로컀 날짜
+ *   - 부모 레코드 직접: start_at 로컬 날짜
  */
 function getRepeatContext(item: Schedule): { parentId: string; occDate: string } {
   const parentId = item.parent_id || item.id
@@ -34,66 +40,143 @@ function getRepeatContext(item: Schedule): { parentId: string; occDate: string }
 
 // ─── Schedules ──────────────────────────────────────
 export async function fetchSchedules(): Promise<Schedule[]> {
+  if (!navigator.onLine) {
+    return cacheGetSchedules()
+  }
   return withAuth(async () => {
     const records = await pb.collection('schedules').getFullList({ requestKey: null })
-    return records as unknown as Schedule[]
+    const schedules = records as unknown as Schedule[]
+    await cacheSetSchedules(schedules)
+    return schedules
   })
 }
 
 export async function createSchedule(data: Partial<Schedule>): Promise<Schedule> {
+  if (!navigator.onLine) {
+    // 오프라인: 임시 ID 생성 후 캐시에 저장, 큐에 적재
+    const tempId = `offline_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const tempRecord = { ...data, id: tempId, created: new Date().toISOString(), updated: new Date().toISOString() } as Schedule
+    await cachePutSchedule(tempRecord)
+    await enqueue({ type: 'create', collection: 'schedules', recordId: tempId, payload: data as Record<string, unknown> })
+    return tempRecord
+  }
   return withAuth(async () => {
     const record = await pb.collection('schedules').create(data, { requestKey: null })
-    return record as unknown as Schedule
+    const schedule = record as unknown as Schedule
+    await cachePutSchedule(schedule)
+    return schedule
   })
 }
 
 export async function updateSchedule(id: string, data: Partial<Schedule>): Promise<Schedule> {
+  if (!navigator.onLine) {
+    const cached = (await cacheGetSchedules()).find(s => s.id === id)
+    const updated = { ...(cached ?? {}), ...data, id, updated: new Date().toISOString() } as Schedule
+    await cachePutSchedule(updated)
+    // changedFields: data 만 저장, baseUpdated: 수정 전 cached.updated
+    await enqueue({
+      type         : 'update',
+      collection   : 'schedules',
+      recordId     : id,
+      changedFields: data as Record<string, unknown>,
+      baseUpdated  : cached?.updated,
+    })
+    return updated
+  }
   return withAuth(async () => {
     const record = await pb.collection('schedules').update(id, data, { requestKey: null })
-    return record as unknown as Schedule
+    const schedule = record as unknown as Schedule
+    await cachePutSchedule(schedule)
+    return schedule
   })
 }
 
 export async function deleteSchedule(id: string): Promise<void> {
+  if (!navigator.onLine) {
+    await cacheDeleteSchedule(id)
+    await enqueue({ type: 'delete', collection: 'schedules', recordId: id })
+    return
+  }
   return withAuth(async () => {
     await pb.collection('schedules').delete(id, { requestKey: null })
+    await cacheDeleteSchedule(id)
   })
 }
 
 // ─── Categories ─────────────────────────────────────
 export async function fetchCategories(): Promise<Category[]> {
+  if (!navigator.onLine) {
+    return cacheGetCategories()
+  }
   return withAuth(async () => {
     const records = await pb.collection('categories').getFullList({ sort: 'order', requestKey: null })
-    return records as unknown as Category[]
+    const categories = records as unknown as Category[]
+    await cacheSetCategories(categories)
+    return categories
   })
 }
 
 export async function createCategory(data: Partial<Category>): Promise<Category> {
+  if (!navigator.onLine) {
+    const tempId = `offline_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const tempRecord = { ...data, id: tempId, created: new Date().toISOString(), updated: new Date().toISOString() } as Category
+    await cachePutCategory(tempRecord)
+    await enqueue({ type: 'create', collection: 'categories', recordId: tempId, payload: data as Record<string, unknown> })
+    return tempRecord
+  }
   return withAuth(async () => {
     const record = await pb.collection('categories').create(data, { requestKey: null })
-    return record as unknown as Category
+    const category = record as unknown as Category
+    await cachePutCategory(category)
+    return category
   })
 }
 
 export async function updateCategory(id: string, data: Partial<Category>): Promise<Category> {
+  if (!navigator.onLine) {
+    const cached = (await cacheGetCategories()).find(c => c.id === id)
+    const updated = { ...(cached ?? {}), ...data, id, updated: new Date().toISOString() } as Category
+    await cachePutCategory(updated)
+    await enqueue({
+      type         : 'update',
+      collection   : 'categories',
+      recordId     : id,
+      changedFields: data as Record<string, unknown>,
+      baseUpdated  : cached?.updated,
+    })
+    return updated
+  }
   return withAuth(async () => {
     const record = await pb.collection('categories').update(id, data, { requestKey: null })
-    return record as unknown as Category
+    const category = record as unknown as Category
+    await cachePutCategory(category)
+    return category
   })
 }
 
 export async function deleteCategory(id: string): Promise<void> {
+  if (!navigator.onLine) {
+    await cacheDeleteCategory(id)
+    await enqueue({ type: 'delete', collection: 'categories', recordId: id })
+    return
+  }
   return withAuth(async () => {
     await pb.collection('categories').delete(id, { requestKey: null })
+    await cacheDeleteCategory(id)
   })
 }
 
 // ─── Settings ───────────────────────────────────────
 export async function fetchSettings(): Promise<Settings | null> {
+  if (!navigator.onLine) {
+    return cacheGetSettings()
+  }
   try {
     return await withAuth(async () => {
       const records = await pb.collection('settings').getFullList({ requestKey: null })
-      return (records[0] as unknown as Settings) ?? null
+      const settings = (records[0] as unknown as Settings) ?? null
+      if (settings) await cacheSetSettings(settings)
+      return settings
     })
   } catch {
     return null
@@ -101,13 +184,30 @@ export async function fetchSettings(): Promise<Settings | null> {
 }
 
 export async function upsertSettings(id: string | undefined, data: Partial<Settings>): Promise<Settings> {
+  if (!navigator.onLine) {
+    const cached = await cacheGetSettings()
+    const updated = { ...(cached ?? {}), ...data, id: id ?? cached?.id ?? 'local' } as Settings
+    await cacheSetSettings(updated)
+    if (id) await enqueue({
+      type         : 'update',
+      collection   : 'settings',
+      recordId     : id,
+      changedFields: data as Record<string, unknown>,
+      baseUpdated  : cached?.updated,
+    })
+    return updated
+  }
   return withAuth(async () => {
     if (id) {
       const record = await pb.collection('settings').update(id, data, { requestKey: null })
-      return record as unknown as Settings
+      const settings = record as unknown as Settings
+      await cacheSetSettings(settings)
+      return settings
     } else {
       const record = await pb.collection('settings').create(data, { requestKey: null })
-      return record as unknown as Settings
+      const settings = record as unknown as Settings
+      await cacheSetSettings(settings)
+      return settings
     }
   })
 }

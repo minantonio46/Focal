@@ -118,11 +118,22 @@
 
 ---
 
-## Phase 7 — 오프라인 지원 ⬜
+## Phase 7 — 오프라인 지원 ✅
 
-- [ ] PocketBase SDK 로컬 캐시 설정
-- [ ] 오프라인 상태 감지 및 UI 표시
-- [ ] 온라인 복귀 시 자동 동기화
+- [x] PocketBase SDK 로컬 캐시 설정
+  - `lib/offlineCache.ts`: IndexedDB 기반 schedules/categories/settings 캐시
+  - 온라인 fetch 시 캐시 자동 갱신, 앱 시작 시 캐시 먼저 로드
+  - CRUD 함수 전체에 캐시 read/write 연동 (api.ts)
+- [x] 오프라인 상태 감지 및 UI 표시
+  - `lib/offlineManager.ts`: navigator.onLine + window 'online'/'offline' 이벤트
+  - `components/layout/OfflineBanner.tsx`: 노란 배너 + 미동기화 건수 표시
+- [x] 온라인 복귀 시 자동 동기화
+  - `lib/syncQueue.ts`: IndexedDB 큐에 오프라인 변경 적재
+  - 복귀 시 flushQueue() → 서버 반영 → 최신 데이터 fetch → 캐시 갱신 → store 반영
+- [x] 충돌 감지 및 해결 UI
+  - 필드 단위 수정(changedFields) + baseUpdated 타임스탬프 기반 충돌 감지
+  - `lib/conflictStore.ts`: 충돌 정보 IndexedDB 보관
+  - `components/modal/ConflictModal.tsx`: 충돌 필드 비교 + 내 버전 / 서버 버전 선택 UI
 
 ---
 

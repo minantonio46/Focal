@@ -7,12 +7,13 @@ import PriorityPage from './pages/PriorityPage'
 import CategoryPage from './pages/CategoryPage'
 import SettingsPage from './pages/SettingsPage'
 import { initAuth } from './lib/pocketbase'
-import { fetchCategories, fetchSettings, fetchSchedules, runAutoDelete } from './lib/api'
 import {
   startNotificationPoller,
   stopNotificationPoller,
   requestNotificationPermission,
 } from './lib/notificationService'
+import { initOfflineManager, destroyOfflineManager } from './lib/offlineManager'
+import { cacheGetSchedules, cacheGetCategories, cacheGetSettings } from './lib/offlineCache'
 import useAppStore from './stores/useAppStore'
 
 export default function App() {
@@ -21,24 +22,29 @@ export default function App() {
   useEffect(() => {
     async function init() {
       await initAuth()
-      const [cats, fetchedSettings, fetchedSchedules] = await Promise.all([
-        fetchCategories(),
-        fetchSettings(),
-        fetchSchedules(),
-      ])
-      setCategories(cats)
-      setSchedules(fetchedSchedules)
-      if (fetchedSettings) setSettings(fetchedSettings)
 
-      runAutoDelete(
-        fetchedSettings?.todo_delete_days     ?? 30,
-        fetchedSettings?.schedule_delete_days ?? 180,
-      ).catch(console.error)
+      // 캐시에서 먼저 로드 (오프라인이어도 즉시 표시, 서버 fetch 전에 화면 채움)
+      const [cachedSchedules, cachedCategories, cachedSettings] = await Promise.all([
+        cacheGetSchedules(),
+        cacheGetCategories(),
+        cacheGetSettings(),
+      ])
+      if (cachedSchedules.length) setSchedules(cachedSchedules)
+      if (cachedCategories.length) setCategories(cachedCategories)
+      if (cachedSettings) setSettings(cachedSettings)
+
+      // 서버 fetch + 캐시 갱신은 initOfflineManager → handleOnline 이 담당
+      // (온라인이면 즉시 실행, 오프라인 복귀 시에도 동일 경로)
+      // runAutoDelete 도 offlineManager 동기화 완료 후 실행됨 (offlineManager.ts 참고)
 
       // 알림 권한 요청 (웹 환경)
       requestNotificationPermission().catch(console.error)
     }
     init().catch(console.error)
+
+    // 오프라인 매니저 초기화 — 온라인이면 여기서 서버 fetch + 캐시 갱신 수행
+    void initOfflineManager()
+    return () => destroyOfflineManager()
   }, [])
 
   // 알림 폴러: schedules / settings 변경 시 재시작
