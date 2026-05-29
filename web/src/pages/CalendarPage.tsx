@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { Schedule } from '../types'
 import useAppStore from '../stores/useAppStore'
-import { updateSchedule, deleteSchedule, fetchSchedules } from '../lib/api'
+import { updateSchedule, deleteSchedule, fetchSchedules, createException } from '../lib/api'
+import { expandSchedulesForRange } from '../lib/repeatUtils'
+import { getWeekDays } from '../components/calendar/calendarUtils'
 import CalendarHeader      from '../components/calendar/CalendarHeader'
 import MonthView           from '../components/calendar/MonthView'
 import WeekView            from '../components/calendar/WeekView'
@@ -29,6 +31,36 @@ export default function CalendarPage() {
 
   const slotMins   = settings?.calendar_slot_mins ?? 60
   const timeFormat = settings?.time_format ?? '24h'
+
+  // ─── 뷰 범위 계산 & 가상 인스턴스 확장 ─────────────────────
+  const [rangeStart, rangeEnd] = useMemo((): [Date, Date] => {
+    const y = currentDate.getFullYear()
+    const m = currentDate.getMonth()
+    if (view === 'month') {
+      const dow = new Date(y, m, 1).getDay()
+      const gs = new Date(y, m, 1 + (dow === 0 ? -6 : 1 - dow))
+      gs.setHours(0, 0, 0, 0)
+      const ge = new Date(gs)
+      ge.setDate(gs.getDate() + 41)   // 6주 = 42일
+      ge.setHours(23, 59, 59, 999)
+      return [gs, ge]
+    }
+    if (view === 'week') {
+      const days = getWeekDays(currentDate)
+      const s = new Date(days[0]); s.setHours(0, 0, 0, 0)
+      const e = new Date(days[6]); e.setHours(23, 59, 59, 999)
+      return [s, e]
+    }
+    // day
+    const s = new Date(currentDate); s.setHours(0, 0, 0, 0)
+    const e = new Date(currentDate); e.setHours(23, 59, 59, 999)
+    return [s, e]
+  }, [view, currentDate])
+
+  const displaySchedules = useMemo(
+    () => expandSchedulesForRange(schedules, rangeStart, rangeEnd),
+    [schedules, rangeStart, rangeEnd],
+  )
 
   // ─── 날짜 네비게이션 ──────────────────────────────────────
 
@@ -66,16 +98,49 @@ export default function CalendarPage() {
   // ─── 드래그앤드롭 일정 이동 ───────────────────────────────
 
   async function handleUpdateSchedule(id: string, data: Partial<Schedule>) {
-    try {
-      const updated = await updateSchedule(id, data)
-      setSchedules(schedules.map(s => s.id === id ? { ...s, ...updated } : s))
-    } catch (err) {
-      console.error('일정 이동 실패:', err)
+    if (id.includes('_virt_')) {
+      // 가상 인스턴스 이동 → 예외 레코드 생성
+      const sepIdx = id.indexOf('_virt_')
+      const parentId       = id.slice(0, sepIdx)
+      const occurrenceDate = id.slice(sepIdx + 6)
+      const parent = schedules.find(s => s.id === parentId)
+      if (!parent) return
+      try {
+        // id / created / updated / 런타임 필드 제외하고 전달 (PB 추동 필드 충돌 방지)
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { id: _pid, created: _c, updated: _u, _isVirtual: _iv, _occurrenceDate: _od, ...parentFields } = parent
+        await createException(parentId, occurrenceDate, {
+          ...parentFields,
+          ...data,
+          parent_id:      parentId,
+          exception_date: occurrenceDate,
+          repeat_type:    'none',
+          repeat_days:    [],
+          repeat_end_at:  '',
+          repeat_count:   0,
+          excluded_dates: [],
+        })
+        await reloadSchedules()
+      } catch (err) {
+        console.error('일정 이동 실패:', err)
+      }
+    } else {
+      try {
+        const updated = await updateSchedule(id, data)
+        setSchedules(schedules.map(s => s.id === id ? { ...s, ...updated } : s))
+      } catch (err) {
+        console.error('일정 이동 실패:', err)
+      }
     }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('삭제하시겠습니까?')) return
+    // id가 비어있으면 반복 그룹 삭제가 이미 완료된 것 → reload만
+    if (!id) {
+      await reloadSchedules()
+      return
+    }
+    // 확인은 DetailModal의 ConfirmDialog에서 처리됨
     await deleteSchedule(id)
     setSchedules(schedules.filter(s => s.id !== id))
   }
@@ -111,7 +176,7 @@ export default function CalendarPage() {
       <div className="flex-1 min-h-0 flex flex-col">
         {view === 'month' && (
           <MonthView
-            schedules={schedules}
+            schedules={displaySchedules}
             categories={categories}
             currentDate={currentDate}
             timeFormat={timeFormat}
@@ -121,7 +186,7 @@ export default function CalendarPage() {
         )}
         {view === 'week' && (
           <WeekView
-            schedules={schedules}
+            schedules={displaySchedules}
             categories={categories}
             currentDate={currentDate}
             slotMins={slotMins}
@@ -133,7 +198,7 @@ export default function CalendarPage() {
         )}
         {view === 'day' && (
           <DayView
-            schedules={schedules}
+            schedules={displaySchedules}
             categories={categories}
             currentDate={currentDate}
             slotMins={slotMins}

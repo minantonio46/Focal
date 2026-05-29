@@ -30,9 +30,15 @@ export interface Schedule {
   repeat_end_at: string    // 없으면 ""
   repeat_count: number
   parent_id: string        // 반복 원본 참조. 없으면 ""
+  exception_date: string   // 예외 레코드의 원본 발생일 YYYY-MM-DD. 없으면 ""
+  excluded_dates: string[] // 부모 레코드의 삭제된 발생일 목록 (YYYY-MM-DD[])
   reminder_mins: number[]
   created: string
   updated: string
+
+  // ── 런타임 전용 (DB 저장 안 됨) ──
+  _isVirtual?: true        // expandSchedulesForRange가 생성한 가상 인스턴스
+  _occurrenceDate?: string // 이 가상 인스턴스의 발생일 YYYY-MM-DD
 }
 
 export interface Notification {

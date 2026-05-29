@@ -1,10 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
-import { createSchedule, updateSchedule, fetchCategories, createCategory } from '../../lib/api'
+import {
+  createSchedule, updateSchedule, fetchCategories, createCategory,
+  createException, updateFromOccurrence, updateAllOccurrences,
+} from '../../lib/api'
 import type { Schedule, Category } from '../../types'
 import useAppStore from '../../stores/useAppStore'
 // Phase 10 밑작업: toUTCISO/fromUTCISO에 settings.timezone을 넘기면
 // 국가 설정 기반 마감 처리로 업그레이드 가능
 import { toUTCISO, fromUTCISO, fromUTCISODatetime } from '../../lib/dateUtils'
+import {
+  type RepeatEndType,
+  REPEAT_TYPE_LABELS,
+  REPEAT_DAY_LABELS,
+} from '../../lib/repeatUtils'
 
 interface Props {
   onClose: () => void
@@ -16,6 +24,13 @@ interface Props {
    */
   defaultDate?: string
   editItem?: Schedule
+  /**
+   * 반복 일정 수정 시 범위
+   * - 'this'           : 이 일정만 수정 (모든 필드 포함)
+   * - 'this_and_after' : 이후 전체 일괄 수정 (시간 필드 제외)
+   * - 'all'            : 그룹 전체 일괄 수정 (시간 필드 제외)
+   */
+  repeatEditMode?: 'this' | 'this_and_after' | 'all'
 }
 
 type DeadlinePrecision = 'none' | 'year' | 'month' | 'day' | 'datetime'
@@ -129,16 +144,19 @@ export default function ScheduleFormModal({
   defaultIsTodo = false,
   defaultDate,
   editItem,
+  repeatEditMode,
 }: Props) {
   const { categories, setCategories, settings } = useAppStore()
   // Phase 10: settings.timezone 을 아래 함수들에 전달하면 국가 기반 마감 처리
   const tz = settings?.timezone
 
+  // 일괄 수정 모드 (시간 필드 비활성화, bulk update)
+  const isBulkEdit = repeatEditMode === 'this_and_after' || repeatEditMode === 'all'
+
   const [isTodo, setIsTodo] = useState(editItem ? editItem.is_todo : defaultIsTodo)
   const [title, setTitle]   = useState(editItem?.title ?? '')
   const [isAllDay, setIsAllDay] = useState(editItem?.is_all_day ?? false)
 
-  // 편집 시에는 기존 값 복원, 신규 시에는 defaultDate 사용
   const initStart = editItem?.start_at
     ? fromUTCISO(editItem.start_at, tz)
     : { date: defaultDate ?? '', time: '' }
@@ -154,7 +172,6 @@ export default function ScheduleFormModal({
   const [deadlinePrecision, setDeadlinePrecision] = useState<DeadlinePrecision>(
     editItem?.is_todo ? (editItem.deadline_precision ?? 'none') : 'none'
   )
-  // Todo 마감 기한 초기값: 편집 시 기존 값, 신규 시 defaultDate (day 정밀도에 사용)
   const [deadlineInput, setDeadlineInput] = useState(() =>
     editItem ? initDeadlineInput(editItem) : (defaultDate ?? '')
   )
@@ -167,8 +184,34 @@ export default function ScheduleFormModal({
   const [expireType, setExpireType]      = useState<'expire' | 'keep'>(editItem?.expire_type ?? 'keep')
   const [isSaving, setIsSaving]          = useState(false)
   const [error, setError]                = useState('')
-  const [showNewCat, setShowNewCat] = useState(false)
-  const [showNewSub, setShowNewSub] = useState(false)
+  const [showNewCat, setShowNewCat]      = useState(false)
+  const [showNewSub, setShowNewSub]      = useState(false)
+
+  // ── 반복 설정 ──────────────────────────────────────────
+  // 신규 생성: 모든 필드 편집 가능
+  // repeatEditMode==='all': 종료 조건만 편집 가능 (editItem 값으로 초기화)
+  const [repeatType, setRepeatType]       = useState<Schedule['repeat_type']>('none')
+  const [repeatDays, setRepeatDays]       = useState<number[]>([])
+
+  // 종료 조건 초기화 — 'all' 수정 모드에서는 editItem 기존 값으로 세팅
+  const initRepeatEndType = (): RepeatEndType => {
+    if (!editItem) return 'forever'
+    if (editItem.repeat_end_at) return 'until'
+    if (editItem.repeat_count && editItem.repeat_count > 0) return 'count'
+    return 'forever'
+  }
+  const initRepeatEndAt = (): string => {
+    if (!editItem?.repeat_end_at) return ''
+    return fromUTCISO(editItem.repeat_end_at, tz).date
+  }
+  const initRepeatCount = (): number => {
+    if (!editItem?.repeat_count || editItem.repeat_count <= 0) return 4
+    return editItem.repeat_count
+  }
+
+  const [repeatEndType, setRepeatEndType] = useState<RepeatEndType>(initRepeatEndType)
+  const [repeatEndAt, setRepeatEndAt]     = useState(initRepeatEndAt)  // YYYY-MM-DD
+  const [repeatCount, setRepeatCount]     = useState(initRepeatCount)
 
   useEffect(() => {
     if (categories.length === 0) fetchCategories().then(setCategories)
@@ -209,15 +252,47 @@ export default function ScheduleFormModal({
     setSubCategoryId(val)
   }
 
+  function toggleRepeatDay(d: number) {
+    setRepeatDays(prev =>
+      prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]
+    )
+  }
+
   async function handleSubmit() {
     if (!title.trim()) { setError('제목을 입력해주세요'); return }
-    if (!isTodo) {
+    if (!isTodo && !isBulkEdit) {
       if (!startDate) { setError('시작 날짜를 입력해주세요'); return }
       if (!isAllDay && !startTime) { setError('시작 시각을 입력해주세요'); return }
     }
 
     setIsSaving(true); setError('')
     try {
+      // ── 일괄 수정 모드 (this_and_after / all) ────────────
+      if (isBulkEdit && editItem) {
+        const bulkData: Partial<Schedule> = {
+          title:           title.trim(),
+          importance,
+          category_id:     categoryId    || undefined,
+          sub_category_id: subCategoryId || undefined,
+          description,
+          location,
+        }
+        if (repeatEditMode === 'all') {
+          // undefined를 보내면 PB가 해당 필드를 업데이트하지 않음
+          // 무기한 = 빈 문자열/0으로 명시해서 기존 종료일을 제거
+          bulkData.repeat_end_at = (repeatEndType === 'until' && repeatEndAt)
+            ? toUTCISO(repeatEndAt + 'T23:59:00', tz)
+            : ''
+          bulkData.repeat_count = repeatEndType === 'count' ? repeatCount : 0
+          await updateAllOccurrences(editItem, bulkData)
+        } else {
+          await updateFromOccurrence(editItem, bulkData)
+        }
+        onSave()
+        return
+      }
+
+      // ── 단독 저장 (신규 or this 수정) ───────────────────
       let startAt: string | undefined
       let endAt:   string | undefined
 
@@ -235,6 +310,21 @@ export default function ScheduleFormModal({
         }
       }
 
+      // 신규 일정일 때 반복 필드 포함
+      // 반복 없음: repeat_type = 'none' 명시 (미설정 시 PB가 '' 로 저장해 필터 오류 방지)
+      const repeatFields: Partial<Schedule> = (!editItem && !isTodo)
+        ? repeatType !== 'none'
+          ? {
+              repeat_type:   repeatType,
+              repeat_days:   repeatType === 'weekly' ? repeatDays : [],
+              repeat_end_at: (repeatEndType === 'until' && repeatEndAt)
+                ? toUTCISO(repeatEndAt + 'T23:59:00', tz)
+                : undefined,
+              repeat_count:  repeatEndType === 'count' ? repeatCount : undefined,
+            }
+          : { repeat_type: 'none', repeat_days: [], repeat_end_at: undefined, repeat_count: 0 }
+        : {}
+
       const data: Partial<Schedule> = {
         title: title.trim(), is_todo: isTodo, importance,
         category_id:     categoryId    || undefined,
@@ -249,10 +339,24 @@ export default function ScheduleFormModal({
             }
           : { is_all_day: isAllDay, start_at: startAt, end_at: endAt }
         ),
+        ...repeatFields,
       }
 
-      if (editItem) { await updateSchedule(editItem.id, data) }
-      else          { await createSchedule(data) }
+      if (editItem) {
+        if (editItem._isVirtual) {
+          // 가상 인스턴스 → 예외 레코드 생성
+          await createException(
+            editItem.parent_id,
+            editItem._occurrenceDate!,
+            { ...data, is_todo: editItem.is_todo },
+          )
+        } else {
+          await updateSchedule(editItem.id, data)
+        }
+      } else {
+        await createSchedule(data)
+      }
+
       onSave()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : '저장 실패')
@@ -275,31 +379,183 @@ export default function ScheduleFormModal({
     }
   }
 
+  /**
+   * 반복 설정 섹션
+   * - 신규 일정: 주기/요일/종료 조건 전체
+   * - repeatEditMode==='all': 종료 조건만 (기존 인스턴스 시간 유지)
+   */
+  function renderRepeatSection() {
+    // 'all' 편집 모드: 종료 조건만 표시
+    if (editItem && repeatEditMode === 'all') {
+      return (
+        <div className="flex flex-col gap-3 pt-1 border-t border-gray-800">
+          <label className="text-xs text-gray-500 block">반복 종료 조건 변경</label>
+          <div className="flex gap-1">
+            {(['forever', 'until', 'count'] as const).map(et => (
+              <button
+                key={et}
+                onClick={() => setRepeatEndType(et)}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors
+                  ${repeatEndType === et ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+              >
+                {et === 'forever' ? '무기한' : et === 'until' ? '종료일' : '횟수'}
+              </button>
+            ))}
+          </div>
+          {repeatEndType === 'until' && (
+            <input
+              type="date"
+              value={repeatEndAt}
+              onChange={e => setRepeatEndAt(e.target.value)}
+              className="bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 w-full"
+            />
+          )}
+          {repeatEndType === 'count' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="number" min={2} max={365}
+                value={repeatCount}
+                onChange={e => setRepeatCount(Math.max(2, parseInt(e.target.value) || 2))}
+                className="bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 w-24"
+              />
+              <span className="text-sm text-gray-400">회 (원본 포함)</span>
+            </div>
+          )}
+          <p className="text-xs text-amber-400/70">
+            이 날의 반복 발생 시각은 유지되고, 종료 조건만 변경됩니다.
+          </p>
+        </div>
+      )
+    }
+    // 그 외 편집 모드(this, this_and_after): 반복 설정 숨김
+    if (editItem || isTodo) return null
+    return (
+      <div className="flex flex-col gap-3 pt-1 border-t border-gray-800">
+        <label className="text-xs text-gray-500 block">반복</label>
+
+        {/* 주기 선택 */}
+        <div className="flex gap-1">
+          {(['none', 'daily', 'weekly', 'monthly', 'yearly'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => { setRepeatType(t); if (t !== 'weekly') setRepeatDays([]) }}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors
+                ${repeatType === t ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+            >
+              {REPEAT_TYPE_LABELS[t]}
+            </button>
+          ))}
+        </div>
+
+        {/* 요일 선택 (매주) */}
+        {repeatType === 'weekly' && (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs text-gray-500">요일</span>
+            <div className="flex gap-1">
+              {REPEAT_DAY_LABELS.map((label, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => toggleRepeatDay(idx)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors
+                    ${repeatDays.includes(idx)
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 종료 조건 */}
+        {repeatType !== 'none' && (
+          <div className="flex flex-col gap-2">
+            <span className="text-xs text-gray-500">종료</span>
+            <div className="flex gap-1">
+              {(['forever', 'until', 'count'] as const).map(et => (
+                <button
+                  key={et}
+                  onClick={() => setRepeatEndType(et)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors
+                    ${repeatEndType === et ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+                >
+                  {et === 'forever' ? '무기한' : et === 'until' ? '종료일' : '횟수'}
+                </button>
+              ))}
+            </div>
+
+            {repeatEndType === 'until' && (
+              <input
+                type="date"
+                value={repeatEndAt}
+                onChange={e => setRepeatEndAt(e.target.value)}
+                className="bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 w-full"
+              />
+            )}
+
+            {repeatEndType === 'count' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" min={2} max={365}
+                  value={repeatCount}
+                  onChange={e => setRepeatCount(Math.max(2, parseInt(e.target.value) || 2))}
+                  className="bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 w-24"
+                />
+                <span className="text-sm text-gray-400">회 (원본 포함)</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const inputCls  = 'bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 w-full'
   const selectCls = 'bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none w-full'
+
+  const headerTitle = (() => {
+    if (!repeatEditMode) return editItem ? '수정' : '새 항목'
+    if (repeatEditMode === 'this') return '이 일정 수정'
+    if (repeatEditMode === 'this_and_after') return '이후 일정 수정'
+    return '모든 일정 수정'
+  })()
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-gray-900 rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
-          <h3 className="font-semibold text-lg">{editItem ? '수정' : '새 항목'}</h3>
+          <div>
+            <h3 className="font-semibold text-lg">{headerTitle}</h3>
+            {isBulkEdit && (
+              <p className="text-xs text-amber-400/80 mt-0.5">
+                {repeatEditMode === 'all'
+                  ? '제목·카테고리·중요도·장소·메모·종료 조건이 일괄 적용됩니다'
+                  : '제목·카테고리·중요도·장소·메모만 일괄 적용됩니다'}
+              </p>
+            )}
+          </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
         </div>
 
         <div className="px-5 py-4 flex flex-col gap-4">
-          <div className="flex gap-1 bg-gray-800 rounded-lg p-1 w-fit">
-            {([true, false] as const).map(v => (
-              <button key={String(v)} onClick={() => setIsTodo(v)}
-                className={`px-4 py-1.5 rounded-md text-sm transition-colors ${isTodo === v ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
-                {v ? 'Todo' : '일정'}
-              </button>
-            ))}
-          </div>
+          {/* Todo/일정 토글: 일괄 수정 시 숨김 */}
+          {!isBulkEdit && (
+            <div className="flex gap-1 bg-gray-800 rounded-lg p-1 w-fit">
+              {([true, false] as const).map(v => (
+                <button key={String(v)} onClick={() => setIsTodo(v)}
+                  className={`px-4 py-1.5 rounded-md text-sm transition-colors ${isTodo === v ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                  {v ? 'Todo' : '일정'}
+                </button>
+              ))}
+            </div>
+          )}
 
           <input type="text" placeholder="제목" value={title} onChange={e => setTitle(e.target.value)} maxLength={100}
             className="bg-gray-800 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 w-full" />
 
-          {!isTodo && (
+          {/* 시간 필드: 일괄 수정 모드에서 숨김 */}
+          {!isTodo && !isBulkEdit && (
             <>
               <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
                 <input type="checkbox" checked={isAllDay} onChange={e => handleAllDayChange(e.target.checked)} className="accent-blue-500" />
@@ -332,7 +588,7 @@ export default function ScheduleFormModal({
             </>
           )}
 
-          {isTodo && (
+          {isTodo && !isBulkEdit && (
             <div className="flex flex-col gap-2">
               <label className="text-xs text-gray-500 block">마감 기한</label>
               <div className="flex gap-1">
@@ -347,7 +603,7 @@ export default function ScheduleFormModal({
             </div>
           )}
 
-          {hasDeadline && (
+          {hasDeadline && !isBulkEdit && (
             <div>
               <label className="text-xs text-gray-500 mb-1.5 block">기한 초과 시</label>
               <div className="flex gap-2">
@@ -361,6 +617,10 @@ export default function ScheduleFormModal({
             </div>
           )}
 
+          {/* 반복 설정 (신규 일정만) */}
+          {renderRepeatSection()}
+
+          {/* 카테고리 */}
           <div className="flex flex-col gap-2">
             <div>
               <label className="text-xs text-gray-500 mb-1 block">카테고리</label>
@@ -384,6 +644,7 @@ export default function ScheduleFormModal({
             )}
           </div>
 
+          {/* 중요도 */}
           <div>
             <label className="text-xs text-gray-500 mb-2 block">중요도: {importance.toFixed(1)}</label>
             <input type="range" min={1} max={10} step={0.1} value={importance}
@@ -391,10 +652,15 @@ export default function ScheduleFormModal({
             <div className="flex justify-between text-xs text-gray-600 mt-1"><span>1</span><span>10</span></div>
           </div>
 
-          <input type="text" placeholder="장소 (선택)" value={location} onChange={e => setLocation(e.target.value)} maxLength={100}
-            className="bg-gray-800 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 w-full" />
-          <textarea placeholder="메모 (선택)" value={description} onChange={e => setDescription(e.target.value)} rows={3}
-            className="bg-gray-800 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 w-full resize-none" />
+          {/* 장소 / 메모: 일괄 수정에서는 숨김 */}
+          {!isBulkEdit && (
+            <>
+              <input type="text" placeholder="장소 (선택)" value={location} onChange={e => setLocation(e.target.value)} maxLength={100}
+                className="bg-gray-800 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 w-full" />
+              <textarea placeholder="메모 (선택)" value={description} onChange={e => setDescription(e.target.value)} rows={3}
+                className="bg-gray-800 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 w-full resize-none" />
+            </>
+          )}
 
           {error && <p className="text-red-400 text-sm">{error}</p>}
         </div>

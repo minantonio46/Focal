@@ -76,13 +76,35 @@
 
 ---
 
-## Phase 5 — 반복 일정 ⬜
+## Phase 5 — 반복 일정 ✅
 
-- [ ] 반복 주기 설정 UI (매일/매주/매월/매년)
-- [ ] 요일 지정 UI
-- [ ] 종료 조건 설정 (생성 후 변경 가능)
-- [ ] 수정 다이얼로그 (이 일정만 / 이후 전체 / 모두)
-- [ ] 삭제 다이얼로그 (이 일정만 / 이후 전체 / 모두)
+### 핵심 아키텍처: Virtual Expansion
+- [x] DB에는 부모 레코드 1개만 저장 (인스턴스 pre-generation 제거)
+- [x] 캘린더 렌더링 시 `expandSchedulesForRange()`로 동적 계산
+- [x] PB 스키마 추가: `exception_date` (Text), `excluded_dates` (JSON)
+
+### 반복 설정 UI
+- [x] 반복 주기 설정 UI (매일/매주/매월/매년)
+- [x] 요일 지정 UI (매주 전용)
+- [x] 종료 조건 설정 — 무기한/종료일/횟수 (생성 후 변경 가능)
+
+### 수정 다이얼로그 (이 일정만 / 이후 전체 / 모두)
+- [x] 이 일정만: 가상 인스턴스 → exception 레코드 생성
+- [x] 이후 전체: 부모 truncate + 새 부모 생성
+- [x] 모두: 부모 및 모든 exception 레코드 메타 업데이트
+
+### 삭제 다이얼로그 (이 일정만 / 이후 전체 / 모두)
+- [x] 이 일정만: 부모 `excluded_dates`에 날짜 추가
+- [x] 이후 전체: `exception_date >= occDate` 예외 레코드 삭제 + `repeat_end_at` 업데이트
+- [x] 모두: 부모 + 모든 exception 레코드 삭제
+
+### 버그 수정 / 개선
+- [x] 무한루프 방지: `VALID_REPEAT_TYPES` 유효성 체크, `MAX_OCCURRENCES(5000)` 상한
+- [x] 31일/29일/30일 월반복: `Math.min(originalDay, lastDay)` — 윤년 포함 자동 처리
+- [x] `repeat_type = ''` PB 기본값 처리 (빈 문자열 → 비반복으로 인식)
+- [x] 목록에서 반복 일정: RepeatDialog 없이 전체 삭제/편집으로 단순화
+- [x] 비반복 일정/Todo 삭제 확인: 브라우저 `confirm()` → `ConfirmDialog` (커스텀 팝업)
+- [x] 이중 confirm 버그 수정 (DetailModal + handleDelete 중복 호출)
 
 ---
 

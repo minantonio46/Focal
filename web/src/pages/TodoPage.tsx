@@ -5,6 +5,7 @@ import useAppStore from '../stores/useAppStore'
 import TodoItem from '../components/todo/TodoItem'
 import ScheduleFormModal from '../components/modal/ScheduleFormModal'
 import DetailModal from '../components/modal/DetailModal'
+import ConfirmDialog from '../components/modal/ConfirmDialog'
 
 type FilterType = 'incomplete' | 'complete' | 'all'
 type SortType = 'time' | 'score'
@@ -18,6 +19,7 @@ export default function TodoPage() {
   const [showForm, setShowForm] = useState(false)
   const [selectedItem, setSelectedItem] = useState<Schedule | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   useEffect(() => {
     loadSchedules()
@@ -43,10 +45,19 @@ export default function TodoPage() {
     setSchedules(schedules.map(s => s.id === updated.id ? updated : s))
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('삭제하시겠습니까?')) return
+  // 실제 삭제 (확인이 이미 완료된 경우)
+  async function executeDelete(id: string) {
+    if (!id) {
+      await loadSchedules()
+      return
+    }
     await deleteSchedule(id)
     setSchedules(schedules.filter(s => s.id !== id))
+  }
+
+  // TodoItem 호버 ✕ 버튼: ConfirmDialog 먼저 표시
+  function handleTodoItemDelete(id: string) {
+    if (id) setConfirmDeleteId(id)
   }
 
   const items = schedules.filter(s => view === 'todo' ? s.is_todo : !s.is_todo)
@@ -79,7 +90,7 @@ export default function TodoPage() {
     return 0
   })
 
-  const withDeadline = sort === 'time' && view === 'todo' ? sorted.filter(s => s.start_at) : sorted
+  const withDeadline    = sort === 'time' && view === 'todo' ? sorted.filter(s => s.start_at)  : sorted
   const withoutDeadline = sort === 'time' && view === 'todo' ? sorted.filter(s => !s.start_at) : []
 
   return (
@@ -155,7 +166,7 @@ export default function TodoPage() {
               item={item}
               categories={categories}
               onComplete={view === 'todo' ? handleComplete : undefined}
-              onDelete={handleDelete}
+              onDelete={handleTodoItemDelete}
               onClick={() => setSelectedItem(item)}
             />
           ))}
@@ -172,7 +183,7 @@ export default function TodoPage() {
                   item={item}
                   categories={categories}
                   onComplete={view === 'todo' ? handleComplete : undefined}
-                  onDelete={handleDelete}
+                  onDelete={handleTodoItemDelete}
                   onClick={() => setSelectedItem(item)}
                 />
               ))}
@@ -202,9 +213,25 @@ export default function TodoPage() {
             await loadSchedules()
           }}
           onDelete={async (id) => {
-            await handleDelete(id)
+            // DetailModal이 이미 ConfirmDialog로 확인함 → 바로 실행
             setSelectedItem(null)
+            await executeDelete(id)
           }}
+        />
+      )}
+
+      {/* TodoItem 호버 삭제 확인 다이얼로그 */}
+      {confirmDeleteId && (
+        <ConfirmDialog
+          title="삭제"
+          message="이 항목을 삭제하시겠습니까?"
+          confirmLabel="삭제"
+          onConfirm={async () => {
+            const id = confirmDeleteId
+            setConfirmDeleteId(null)
+            await executeDelete(id)
+          }}
+          onClose={() => setConfirmDeleteId(null)}
         />
       )}
     </div>
