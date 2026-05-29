@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   createSchedule, updateSchedule, fetchCategories, createCategory,
   createException, updateFromOccurrence, updateAllOccurrences,
+  syncNotificationsForSchedule,
 } from '../../lib/api'
 import type { Schedule, Category } from '../../types'
 import useAppStore from '../../stores/useAppStore'
@@ -182,6 +183,14 @@ export default function ScheduleFormModal({
   const [description, setDescription]    = useState(editItem?.description ?? '')
   const [location, setLocation]          = useState(editItem?.location ?? '')
   const [expireType, setExpireType]      = useState<'expire' | 'keep'>(editItem?.expire_type ?? 'keep')
+  // ── 알림 타이밍 ───────────────────────────────────────────
+  // 세팅 default_reminder 로 초기화, 편집 시 editItem.reminder_mins 사용
+  const initReminderMins = (): number[] => {
+    if (editItem) return editItem.reminder_mins ?? []
+    return settings?.default_reminder ?? []
+  }
+  const [reminderMins, setReminderMins] = useState<number[]>(initReminderMins)
+
   const [isSaving, setIsSaving]          = useState(false)
   const [error, setError]                = useState('')
   const [showNewCat, setShowNewCat]      = useState(false)
@@ -330,6 +339,7 @@ export default function ScheduleFormModal({
         category_id:     categoryId    || undefined,
         sub_category_id: subCategoryId || undefined,
         description, location,
+        reminder_mins: reminderMins,
         ...(isTodo
           ? {
               is_all_day: false,
@@ -343,18 +353,21 @@ export default function ScheduleFormModal({
       }
 
       if (editItem) {
+        let savedSchedule: Schedule
         if (editItem._isVirtual) {
           // 가상 인스턴스 → 예외 레코드 생성
-          await createException(
+          savedSchedule = await createException(
             editItem.parent_id,
             editItem._occurrenceDate!,
             { ...data, is_todo: editItem.is_todo },
           )
         } else {
-          await updateSchedule(editItem.id, data)
+          savedSchedule = await updateSchedule(editItem.id, data)
         }
+        await syncNotificationsForSchedule(savedSchedule)
       } else {
-        await createSchedule(data)
+        const savedSchedule = await createSchedule(data)
+        await syncNotificationsForSchedule(savedSchedule)
       }
 
       onSave()
@@ -514,6 +527,73 @@ export default function ScheduleFormModal({
   const inputCls  = 'bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 w-full'
   const selectCls = 'bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none w-full'
 
+  /**
+   * 알림 타이밍 섹션
+   * - 일괄 수정 모드: 숨김
+   * - 기한 없는 Todo (deadlinePrecision=none): 숨김
+   * - 종일 일정: 10분/30분/1시간 비활성화, 하루 전만 선택 가능
+   */
+  function renderReminderSection() {
+    // 일괄 수정에서는 알림 숨김
+    if (isBulkEdit) return null
+    // 기한 없는 Todo: 알림 UI 비활성화
+    if (isTodo && deadlinePrecision === 'none') {
+      return (
+        <div className="flex flex-col gap-2 pt-1 border-t border-gray-800">
+          <label className="text-xs text-gray-500 block">알림</label>
+          <p className="text-xs text-gray-600">마감 기한을 설정해야 알림을 받을 수 있어요.</p>
+        </div>
+      )
+    }
+
+    // 종일 일정: 하루 전(1440분)만 허용
+    const REMINDER_OPTIONS: { mins: number; label: string; disabledForAllDay: boolean }[] = [
+      { mins: 0,    label: '시작 시',  disabledForAllDay: true  },
+      { mins: 10,   label: '10분 전',  disabledForAllDay: true  },
+      { mins: 30,   label: '30분 전',  disabledForAllDay: true  },
+      { mins: 60,   label: '1시간 전', disabledForAllDay: true  },
+      { mins: 1440, label: '하루 전',  disabledForAllDay: false },
+    ]
+
+    function toggleReminder(mins: number) {
+      setReminderMins(prev =>
+        prev.includes(mins) ? prev.filter(m => m !== mins) : [...prev, mins]
+      )
+    }
+
+    return (
+      <div className="flex flex-col gap-2 pt-1 border-t border-gray-800">
+        <label className="text-xs text-gray-500 block">알림 (복수 선택 가능)</label>
+        <div className="flex gap-1 flex-wrap">
+          {REMINDER_OPTIONS.map(({ mins, label, disabledForAllDay }) => {
+            const isDisabled = isAllDay && disabledForAllDay
+            const isActive   = reminderMins.includes(mins) && !isDisabled
+            return (
+              <button
+                key={mins}
+                onClick={() => !isDisabled && toggleReminder(mins)}
+                disabled={isDisabled}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors
+                  ${
+                    isDisabled
+                      ? 'bg-gray-800/50 text-gray-700 cursor-not-allowed'
+                      : isActive
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-800 text-gray-400 hover:text-white'
+                  }`}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+        {isAllDay && (
+          <p className="text-xs text-gray-600">⚠️ 종일 일정은 하루 전 알림만 지원돼요.</p>
+        )}
+      </div>
+    )
+  }
+
   const headerTitle = (() => {
     if (!repeatEditMode) return editItem ? '수정' : '새 항목'
     if (repeatEditMode === 'this') return '이 일정 수정'
@@ -651,6 +731,9 @@ export default function ScheduleFormModal({
               onChange={e => setImportance(parseFloat(e.target.value))} className="w-full accent-blue-500" />
             <div className="flex justify-between text-xs text-gray-600 mt-1"><span>1</span><span>10</span></div>
           </div>
+
+          {/* 알림 타이밍 */}
+          {renderReminderSection()}
 
           {/* 장소 / 메모: 일괄 수정에서는 숨김 */}
           {!isBulkEdit && (

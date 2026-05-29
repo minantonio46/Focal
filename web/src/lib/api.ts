@@ -1,5 +1,5 @@
 import pb, { withAuth } from './pocketbase'
-import type { Schedule, Category, Settings } from '../types'
+import type { Schedule, Category, Settings, Notification } from '../types'
 
 // requestKey: null → PocketBase SDK 자동취소 비활성화
 
@@ -108,6 +108,110 @@ export async function upsertSettings(id: string | undefined, data: Partial<Setti
     } else {
       const record = await pb.collection('settings').create(data, { requestKey: null })
       return record as unknown as Settings
+    }
+  })
+}
+
+// ─── Notifications ──────────────────────────────────────
+export async function fetchNotifications(): Promise<Notification[]> {
+  return withAuth(async () => {
+    const records = await pb.collection('notifications').getFullList({
+      sort: 'fire_at',
+      requestKey: null,
+    })
+    return records as unknown as Notification[]
+  })
+}
+
+export async function fetchPendingNotifications(): Promise<Notification[]> {
+  return withAuth(async () => {
+    const records = await pb.collection('notifications').getFullList({
+      filter: 'status="pending" || status="snoozed"',
+      sort: 'fire_at',
+      requestKey: null,
+    })
+    return records as unknown as Notification[]
+  })
+}
+
+export async function createNotification(data: Partial<Notification>): Promise<Notification> {
+  return withAuth(async () => {
+    const record = await pb.collection('notifications').create(data, { requestKey: null })
+    return record as unknown as Notification
+  })
+}
+
+export async function updateNotification(id: string, data: Partial<Notification>): Promise<Notification> {
+  return withAuth(async () => {
+    const record = await pb.collection('notifications').update(id, data, { requestKey: null })
+    return record as unknown as Notification
+  })
+}
+
+/**
+ * 특정 schedule 의 모든 알림 삭제 (일정 삭제 시 연동 호출)
+ */
+export async function deleteNotificationsBySchedule(scheduleId: string): Promise<void> {
+  return withAuth(async () => {
+    try {
+      const records = await pb.collection('notifications').getFullList({
+        filter: `schedule_id="${scheduleId}"`,
+        fields: 'id',
+        requestKey: null,
+      })
+      for (const r of records) {
+        try { await pb.collection('notifications').delete(r.id, { requestKey: null }) } catch { /* ignore */ }
+      }
+    } catch { /* ignore */ }
+  })
+}
+
+/**
+ * schedule 의 reminder_mins 배열을 보고 notifications 레코드를 (재)생성
+ * - 기존 pending/snoozed 알림 모두 삭제 후 새로 insert
+ * - 종일 일정: 하루 전 09:00 UTC 알림만 허용
+ * - start_at 없는 Todo: 알림 없음
+ */
+export async function syncNotificationsForSchedule(
+  schedule: Schedule
+): Promise<void> {
+  if (!schedule.id || !schedule.start_at || schedule.reminder_mins.length === 0) {
+    // start_at 없거나 알림 없으면 기존 알림 정리만
+    await deleteNotificationsBySchedule(schedule.id)
+    return
+  }
+
+  return withAuth(async () => {
+    // 기존 알림 삭제
+    await deleteNotificationsBySchedule(schedule.id)
+
+    const startMs = new Date(schedule.start_at).getTime()
+    const now     = new Date()
+
+    for (const mins of schedule.reminder_mins) {
+      // 종일 일정: 1440분(하루 전) 만 허용
+      if (schedule.is_all_day && mins !== 1440) continue
+
+      let fireAt: Date
+      if (schedule.is_all_day) {
+        // 하루 전 09:00 로컬 시각
+        const startDate = new Date(schedule.start_at)
+        fireAt = new Date(startDate)
+        fireAt.setDate(fireAt.getDate() - 1)
+        fireAt.setHours(9, 0, 0, 0)
+      } else {
+        fireAt = new Date(startMs - mins * 60 * 1000)
+      }
+
+      // 이미 지난 알림은 생성 안 함
+      if (fireAt <= now) continue
+
+      await pb.collection('notifications').create({
+        schedule_id:   schedule.id,
+        fire_at:       fireAt.toISOString(),
+        status:        'pending',
+        snoozed_until: '',
+      }, { requestKey: null })
     }
   })
 }

@@ -108,13 +108,13 @@
 
 ---
 
-## Phase 6 — 알림 / 리마인더 ⬜
+## Phase 6 — 알림 / 리마인더 ✅
 
-- [ ] 폼에 알림 타이밍 설정 UI (10분/30분/1시간/하루 전, 복수)
-- [ ] 종일 일정: 시간 기반 알림 비활성화
-- [ ] 기한 없는 Todo: 알림 UI 비활성화
-- [ ] Electron Notification API 연동
-- [ ] 스누즈 기능 (settings.snooze_minutes 기반)
+- [x] 폼에 알림 타이밍 설정 UI (10분/30분/1시간/하루 전, 복수)
+- [x] 종일 일정: 시간 기반 알림 비활성화
+- [x] 기한 없는 Todo: 알림 UI 비활성화
+- [x] Electron Notification API 연동 (window.electronAPI.showNotification / 웹 fallback)
+- [x] 스누즈 기능 (settings.snooze_minutes 기반)
 
 ---
 
