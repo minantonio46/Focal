@@ -7,20 +7,24 @@ import PriorityPage from './pages/PriorityPage'
 import CategoryPage from './pages/CategoryPage'
 import SettingsPage from './pages/SettingsPage'
 import { initAuth } from './lib/pocketbase'
-import { fetchCategories, fetchSettings, runAutoDelete } from './lib/api'
+import { fetchCategories, fetchSettings, fetchSchedules, runAutoDelete } from './lib/api'
 import useAppStore from './stores/useAppStore'
 
 export default function App() {
-  const { setCategories, setSettings } = useAppStore()
+  const { setCategories, setSettings, setSchedules } = useAppStore()
 
   useEffect(() => {
     async function init() {
       await initAuth()
-      const [cats, settings] = await Promise.all([fetchCategories(), fetchSettings()])
+      const [cats, settings, schedules] = await Promise.all([
+        fetchCategories(),
+        fetchSettings(),
+        fetchSchedules(),
+      ])
       setCategories(cats)
+      setSchedules(schedules)
       if (settings) setSettings(settings)
 
-      // settings 여부와 무관하게 자동 삭제 실행 (없으면 기본값 사용)
       runAutoDelete(
         settings?.todo_delete_days     ?? 30,
         settings?.schedule_delete_days ?? 180,

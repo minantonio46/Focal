@@ -1,7 +1,7 @@
 # Focal — 프로젝트 계획서
 
-> **문서 버전**: v2.1 | **최초 작성**: 2026-05-26 | **최종 수정**: 2026-05-27
-> **상태**: 🟢 Phase 3 완료, Phase 4 진행 예정
+> **문서 버전**: v2.2 | **최초 작성**: 2026-05-26 | **최종 수정**: 2026-05-29
+> **상태**: 🟢 Phase 4 완료, Phase 5 진행 예정
 
 관련 문서: [기능 명세](./spec.md) · [데이터 모델](./data-model.md) · [개발 체크리스트](./dev-phases.md)
 
@@ -94,7 +94,7 @@
 | 1 | PocketBase 설치 + 자동실행 + 백업 | ✅ 완료 |
 | 2 | React 웹 뼈대 + 사이드바 + PocketBase 연동 | ✅ 완료 |
 | 3 | Todo & 일정 CRUD + 폼 + 카테고리 | ✅ 완료 |
-| 4 | 캘린더 뷰 (월간·주간·일간) | ⬜ 대기 |
+| 4 | 캘린더 뷰 (월간·주간·일간) | ✅ 완료 |
 | 5 | 반복 일정 | ⬜ 대기 |
 | 6 | 알림/리마인더 + 스누즈 | ⬜ 대기 |
 | 7 | 오프라인 캐시 + 자동 동기화 | ⬜ 대기 |
@@ -133,10 +133,11 @@ Focal/
 │       ├── components/layout/    ✅
 │       ├── components/modal/     ✅
 │       ├── components/todo/      ✅
+│       ├── components/calendar/  ✅
 │       ├── lib/                  ✅ (pocketbase, api, dateUtils)
 │       ├── stores/               ✅
 │       ├── types/                ✅
-│       └── pages/TodoPage.tsx    ✅
+│       └── pages/                ✅
 ├── desktop/                ← (Phase 11)
 └── mobile/                 ← (Phase 12~13)
 ```
@@ -152,3 +153,4 @@ Focal/
 | v1.9 | 2026-05-27 | Phase 1 완료 |
 | v2.0 | 2026-05-27 | 시간 표시 형식 설정 추가 (12h/24h) |
 | v2.1 | 2026-05-27 | Phase 2·3 완료. 버그 수정. 계획서 4개 파일로 분리 |
+| v2.2 | 2026-05-29 | Phase 4 완료. MonthView timeFormat 수정, 현재 시각 선 실시간 업데이트, 폼 defaultDate 연동 |

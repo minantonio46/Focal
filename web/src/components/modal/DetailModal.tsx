@@ -5,11 +5,11 @@ import useAppStore from '../../stores/useAppStore'
 import ScheduleFormModal from './ScheduleFormModal'
 
 interface Props {
-  item: Schedule
+  item:       Schedule
   categories: Category[]
-  onClose: () => void
-  onUpdate: () => void
-  onDelete: (id: string) => void
+  onClose:    () => void
+  onUpdate:   () => void
+  onDelete:   (id: string) => void
 }
 
 export default function DetailModal({ item, categories, onClose, onUpdate, onDelete }: Props) {
@@ -19,6 +19,7 @@ export default function DetailModal({ item, categories, onClose, onUpdate, onDel
 
   const cat    = categories.find(c => c.id === item.category_id)
   const subCat = categories.find(c => c.id === item.sub_category_id)
+  const accentColor = subCat?.color ?? cat?.color ?? '#3B82F6'
 
   const isExpired = item.expire_type === 'expire'
     && !!item.start_at
@@ -35,105 +36,145 @@ export default function DetailModal({ item, categories, onClose, onUpdate, onDel
     )
   }
 
+  function handleDelete() {
+    if (confirm(`"${item.title}" 을(를) 삭제하시겠습니까?`)) {
+      onDelete(item.id)
+    }
+  }
+
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
       <div
-        className="bg-gray-900 rounded-xl w-full max-w-md"
+        className="bg-gray-900 rounded-xl w-full max-w-md overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
+        {/* 카테고리 색상 액센트 바 */}
+        <div className="h-1 w-full" style={{ backgroundColor: accentColor }} />
+
         {/* 헤더 */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
-          <div className="flex items-center gap-2">
-            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 font-medium">
               {item.is_todo ? 'Todo' : '일정'}
             </span>
             {item.is_all_day && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">종일</span>
             )}
+            {item.is_completed && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">완료</span>
+            )}
             {isExpired && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">만료</span>
             )}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors text-lg leading-none"
+          >
+            ✕
+          </button>
         </div>
 
+        {/* 본문 */}
         <div className="px-5 py-4 flex flex-col gap-3">
+
           {/* 제목 */}
-          <h3 className={`text-lg font-semibold ${item.is_completed ? 'line-through text-gray-500' : ''}`}>
-            {item.title}
-          </h3>
+          <div className="pl-3 border-l-4 rounded-r" style={{ borderColor: accentColor }}>
+            <h3 className={`text-lg font-semibold leading-snug ${
+              item.is_completed ? 'line-through text-gray-500' : 'text-white'
+            }`}>
+              {item.title}
+            </h3>
+          </div>
 
           {/* 카테고리 */}
           {(cat || subCat) && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
               {cat && (
-                <span className="text-xs px-2 py-1 rounded-full"
-                  style={{ backgroundColor: cat.color + '33', color: cat.color }}>
+                <span className="text-xs px-2.5 py-1 rounded-full font-medium"
+                  style={{ backgroundColor: cat.color + '28', color: cat.color }}>
                   {cat.name}
                 </span>
               )}
               {subCat && (
-                <span className="text-xs px-2 py-1 rounded-full"
-                  style={{ backgroundColor: subCat.color + '33', color: subCat.color }}>
-                  {subCat.name}
-                </span>
+                <>
+                  <span className="text-gray-600 text-xs">›</span>
+                  <span className="text-xs px-2.5 py-1 rounded-full font-medium"
+                    style={{ backgroundColor: subCat.color + '28', color: subCat.color }}>
+                    {subCat.name}
+                  </span>
+                </>
               )}
             </div>
           )}
 
           {/* 시간 */}
           {item.start_at && (
-            <div className="flex items-center gap-2 text-sm text-gray-400">
-              <span>🕐</span>
-              <span>
+            <div className="flex items-start gap-2.5 text-sm text-gray-400">
+              <span className="mt-0.5 flex-shrink-0">🕐</span>
+              <span className="leading-relaxed">
                 {item.is_all_day
-                  ? new Date(item.start_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })
+                  ? new Date(item.start_at).toLocaleDateString('ko-KR', {
+                      year: 'numeric', month: 'short', day: 'numeric',
+                    })
                   : formatDateTime(item.start_at, timeFormat)
                 }
-                {!item.is_todo && item.end_at && !item.is_all_day && (
-                  ` ~ ${formatDateTime(item.end_at, timeFormat)}`
-                )}
-                {!item.is_todo && item.end_at && item.is_all_day && (
-                  ` ~ ${new Date(item.end_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}`
+                {!item.is_todo && item.end_at && (
+                  item.is_all_day
+                    ? ` ~ ${new Date(item.end_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}`
+                    : ` ~ ${formatDateTime(item.end_at, timeFormat)}`
                 )}
               </span>
             </div>
           )}
 
           {/* 중요도 */}
-          <div className="flex items-center gap-2 text-sm text-gray-400">
-            <span>⭐</span>
-            <span>중요도 {item.importance.toFixed(1)}</span>
+          <div className="flex items-center gap-2.5 text-sm text-gray-400">
+            <span className="flex-shrink-0">⭐</span>
+            <div className="flex items-center gap-2">
+              <span>중요도</span>
+              <div className="w-24 h-1.5 rounded-full bg-gray-700 overflow-hidden">
+                <div className="h-full rounded-full" style={{
+                  width: `${(item.importance / 10) * 100}%`,
+                  backgroundColor: accentColor,
+                }} />
+              </div>
+              <span className="text-xs tabular-nums">{item.importance.toFixed(1)}</span>
+            </div>
           </div>
 
           {/* 장소 */}
           {item.location && (
-            <div className="flex items-center gap-2 text-sm text-gray-400">
-              <span>📍</span>
+            <div className="flex items-center gap-2.5 text-sm text-gray-400">
+              <span className="flex-shrink-0">📍</span>
               <span>{item.location}</span>
             </div>
           )}
 
           {/* 메모 */}
           {item.description && (
-            <div className="bg-gray-800 rounded-lg px-4 py-3 text-sm text-gray-300 whitespace-pre-wrap">
+            <div className="bg-gray-800 rounded-xl px-4 py-3 text-sm text-gray-300 whitespace-pre-wrap leading-relaxed border border-gray-700/50">
               {item.description}
             </div>
           )}
         </div>
 
         {/* 푸터 */}
-        <div className="flex gap-2 px-5 py-4 border-t border-gray-700">
+        <div className="flex gap-2 px-5 py-4 border-t border-gray-800">
           <button
-            onClick={() => onDelete(item.id)}
-            className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-red-500/20 text-red-400 text-sm transition-colors"
+            onClick={handleDelete}
+            className="px-4 py-2.5 rounded-xl bg-gray-800 hover:bg-red-500/20 text-red-400 text-sm font-medium transition-colors"
           >
             삭제
           </button>
           <div className="flex-1" />
           <button
             onClick={() => setShowEdit(true)}
-            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-sm font-medium transition-colors"
+            className="px-4 py-2.5 rounded-xl text-sm font-medium transition-colors text-white"
+            style={{ backgroundColor: accentColor }}
           >
             편집
           </button>

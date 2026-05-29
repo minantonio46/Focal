@@ -1,6 +1,6 @@
 export interface Category {
   id: string
-  parent_id: string        // 빈 문자열이면 대카테고리 (PocketBase relation 미설정 = "")
+  parent_id: string        // 빈 문자열이면 대카테고리
   name: string
   color: string
   default_importance: number
@@ -53,4 +53,10 @@ export interface Settings {
   todo_delete_days: number
   schedule_delete_days: number
   calendar_slot_mins: number
+  /**
+   * Phase 10에서 추가 예정: 국가/타임존 설정 (IANA timezone string)
+   * 예: "Asia/Seoul", "America/New_York"
+   * 없으면 브라우저 로컬 타임존 사용
+   */
+  timezone?: string
 }
