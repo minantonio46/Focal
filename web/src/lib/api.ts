@@ -330,6 +330,7 @@ export async function runAutoDelete(
   const todoThresholdStr = toFilterStr(
     new Date(now.getTime() - todoDeleteDays * 24 * 60 * 60 * 1000)
   )
+  const todoThresholdMs = now.getTime() - todoDeleteDays * 24 * 60 * 60 * 1000
   try {
     const oldTodos = await withAuth(() =>
       pb.collection('schedules').getFullList({
@@ -342,6 +343,28 @@ export async function runAutoDelete(
       try { await pb.collection('schedules').delete(item.id) } catch { /* 개별 실패 무시 */ }
     }
   } catch { /* 전체 실패 무시 */ }
+
+  // 반복 Todo: completed_dates 중 가장 나중 완료일이 기준을 넘으면 삭제
+  try {
+    const repeatTodos = await withAuth(() =>
+      pb.collection('schedules').getFullList({
+        filter: `is_todo=true && repeat_type!="none" && repeat_type!=""`,
+        fields: 'id,completed_dates,repeat_end_at,repeat_count',
+        requestKey: null,
+      })
+    )
+    for (const item of repeatTodos) {
+      const completedDates: string[] = (item as unknown as Schedule).completed_dates ?? []
+      if (completedDates.length === 0) continue
+      const lastCompleted = completedDates
+        .map(d => new Date(d).getTime())
+        .filter(t => !isNaN(t))
+        .sort((a, b) => b - a)[0]
+      if (lastCompleted && lastCompleted < todoThresholdMs) {
+        try { await pb.collection('schedules').delete(item.id) } catch { /* ignore */ }
+      }
+    }
+  } catch { /* 무시 */ }
 
   const scheduleThresholdStr = toFilterStr(
     new Date(now.getTime() - scheduleDeleteDays * 24 * 60 * 60 * 1000)
@@ -359,6 +382,64 @@ export async function runAutoDelete(
       try { await pb.collection('schedules').delete(item.id) } catch { /* 개별 실패 무시 */ }
     }
   } catch { /* 전체 실패 무시 */ }
+}
+
+// ─── 반복 Todo 회차별 완료 처리 ─────────────────────────────
+
+/**
+ * 반복 Todo 특정 회차 완료 처리
+ * completed_dates 에 occDate 추가
+ */
+export async function completeTodoOccurrence(
+  parentId: string,
+  occDate: string,
+): Promise<Schedule> {
+  if (!navigator.onLine) {
+    const cached = (await cacheGetSchedules()).find(s => s.id === parentId)
+    if (!cached) throw new Error('cached schedule not found')
+    const completed = [...new Set([...(cached.completed_dates ?? []), occDate])]
+    const updated = { ...cached, completed_dates: completed, updated: new Date().toISOString() } as Schedule
+    await cachePutSchedule(updated)
+    await enqueue({ type: 'update', collection: 'schedules', recordId: parentId,
+      changedFields: { completed_dates: completed }, baseUpdated: cached.updated })
+    return updated
+  }
+  return withAuth(async () => {
+    const parent = await pb.collection('schedules').getOne(parentId, { requestKey: null }) as unknown as Schedule
+    const completed = [...new Set([...(parent.completed_dates ?? []), occDate])]
+    const record = await pb.collection('schedules').update(parentId, {
+      completed_dates: completed,
+    }, { requestKey: null })
+    const updated = record as unknown as Schedule
+    await cachePutSchedule(updated)
+    return updated
+  })
+}
+
+export async function uncompleteTodoOccurrence(
+  parentId: string,
+  occDate: string,
+): Promise<Schedule> {
+  if (!navigator.onLine) {
+    const cached = (await cacheGetSchedules()).find(s => s.id === parentId)
+    if (!cached) throw new Error('cached schedule not found')
+    const completed = (cached.completed_dates ?? []).filter(d => d !== occDate)
+    const updated = { ...cached, completed_dates: completed, updated: new Date().toISOString() } as Schedule
+    await cachePutSchedule(updated)
+    await enqueue({ type: 'update', collection: 'schedules', recordId: parentId,
+      changedFields: { completed_dates: completed }, baseUpdated: cached.updated })
+    return updated
+  }
+  return withAuth(async () => {
+    const parent = await pb.collection('schedules').getOne(parentId, { requestKey: null }) as unknown as Schedule
+    const completed = (parent.completed_dates ?? []).filter(d => d !== occDate)
+    const record = await pb.collection('schedules').update(parentId, {
+      completed_dates: completed,
+    }, { requestKey: null })
+    const updated = record as unknown as Schedule
+    await cachePutSchedule(updated)
+    return updated
+  })
 }
 
 // ─── 반복 일정 (Virtual Expansion 방식) ─────────────────────
@@ -379,13 +460,14 @@ export async function createException(
   return withAuth(async () => {
     const record = await pb.collection('schedules').create({
       ...data,
-      parent_id:      parentId,
-      exception_date: occurrenceDate,
-      repeat_type:    'none',
-      repeat_days:    [],
-      repeat_end_at:  '',
-      repeat_count:   0,
-      excluded_dates: [],
+      parent_id:       parentId,
+      exception_date:  occurrenceDate,
+      repeat_type:     'none',
+      repeat_days:     [],
+      repeat_end_at:   '',
+      repeat_count:    0,
+      excluded_dates:  [],
+      completed_dates: [], // 예외 레코드는 단일 회차 — 완료 이력 초기화
     }, { requestKey: null })
     return record as unknown as Schedule
   })
@@ -518,13 +600,14 @@ export async function updateFromOccurrence(
     await pb.collection('schedules').create({
       ...parentFields,
       ...data,
-      start_at:       newStart.toISOString(),
-      end_at:         newEnd ?? '',
-      parent_id:      '',
-      exception_date: '',
-      excluded_dates: [],
-      repeat_end_at:  parent.repeat_end_at,
-      repeat_count:   parent.repeat_count,
+      start_at:        newStart.toISOString(),
+      end_at:          newEnd ?? '',
+      parent_id:       '',
+      exception_date:  '',
+      excluded_dates:  [],
+      completed_dates: [], // 새 부모는 이후 회차의 시작 — 이전 완료 이력 승계 안 함
+      repeat_end_at:   parent.repeat_end_at,
+      repeat_count:    parent.repeat_count,
     }, { requestKey: null })
   })
 }

@@ -135,7 +135,7 @@ export function toLocalDateStr(d: Date): string {
 }
 
 /** 유효한 repeat_type 집합 — 이 값 외에는 무한루프 위험 */
-const VALID_REPEAT_TYPES = new Set<Schedule['repeat_type']>(['daily', 'weekly', 'monthly', 'yearly'])
+export const VALID_REPEAT_TYPES = new Set<Schedule['repeat_type']>(['daily', 'weekly', 'monthly', 'yearly'])
 
 /** 무한루프 방지 최대 발생 횟수 */
 const MAX_OCCURRENCES = 5_000

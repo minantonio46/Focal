@@ -319,9 +319,9 @@ export default function ScheduleFormModal({
         }
       }
 
-      // 신규 일정일 때 반복 필드 포함
+      // 신규 저장 시 반복 필드 포함 (일정 + Todo 모두)
       // 반복 없음: repeat_type = 'none' 명시 (미설정 시 PB가 '' 로 저장해 필터 오류 방지)
-      const repeatFields: Partial<Schedule> = (!editItem && !isTodo)
+      const repeatFields: Partial<Schedule> = (!editItem)
         ? repeatType !== 'none'
           ? {
               repeat_type:   repeatType,
@@ -441,7 +441,7 @@ export default function ScheduleFormModal({
       )
     }
     // 그 외 편집 모드(this, this_and_after): 반복 설정 숨김
-    if (editItem || isTodo) return null
+    if (editItem) return null
     return (
       <div className="flex flex-col gap-3 pt-1 border-t border-gray-800">
         <label className="text-xs text-gray-500 block">반복</label>

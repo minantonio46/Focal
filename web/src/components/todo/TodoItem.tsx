@@ -2,9 +2,9 @@ import type { Schedule, Category } from '../../types'
 import { formatDate } from '../../lib/dateUtils'
 
 interface Props {
-  item: Schedule
+  item: Schedule & { _repeatOccDate?: string; _repeatIsCompleted?: boolean }
   categories: Category[]
-  onComplete?: (item: Schedule) => void  // 일정 뷰에서는 undefined
+  onComplete?: (item: Schedule) => void
   onDelete: (id: string) => void
   onClick: () => void
 }
@@ -12,6 +12,9 @@ interface Props {
 export default function TodoItem({ item, categories, onComplete, onDelete, onClick }: Props) {
   const cat    = categories.find(c => c.id === item.category_id)
   const subCat = categories.find(c => c.id === item.sub_category_id)
+
+  const isRepeatOcc = !!item._repeatOccDate
+  const isRepeatCompleted = item._repeatIsCompleted ?? false
 
   // Todo 만료: expire 타입이고, 마감 기한이 지났고, 완료되지 않은 경우
   const isExpired = item.is_todo
@@ -24,6 +27,12 @@ export default function TodoItem({ item, categories, onComplete, onDelete, onCli
   const isPast = !item.is_todo && !!item.end_at && new Date(item.end_at) < new Date()
 
   const displayColor = subCat?.color ?? cat?.color ?? '#6B7280'
+
+  // 회차 날짜 포맷 (YYYY-MM-DD → M월 D일)
+  function formatOccDate(dateStr: string): string {
+    const [, m, d] = dateStr.split('-')
+    return `${parseInt(m)}월 ${parseInt(d)}일`
+  }
 
   return (
     <div
@@ -60,6 +69,16 @@ export default function TodoItem({ item, categories, onComplete, onDelete, onCli
           </span>
           {isExpired && (
             <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 flex-shrink-0">만료</span>
+          )}
+          {/* 반복 회차 배지 */}
+          {isRepeatOcc && (
+            <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
+              isRepeatCompleted
+                ? 'bg-green-900/60 text-green-400'
+                : 'bg-blue-900/60 text-blue-300'
+            }`}>
+              반복 {formatOccDate(item._repeatOccDate!)}
+            </span>
           )}
         </div>
         <div className="flex items-center gap-2 mt-1 flex-wrap">

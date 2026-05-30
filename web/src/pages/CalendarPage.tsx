@@ -119,6 +119,7 @@ export default function CalendarPage() {
           repeat_end_at:  '',
           repeat_count:   0,
           excluded_dates: [],
+          completed_dates: [], // 예외 레코드는 단일 회차 — 완료 이력 초기화
         })
         await reloadSchedules()
       } catch (err) {

@@ -87,14 +87,23 @@ export async function cacheGetSchedules(): Promise<Schedule[]> {
 }
 
 export async function cacheSetSchedules(schedules: Schedule[]): Promise<void> {
-  // 런타임 전용 필드 제거 후 저장
-  const clean = schedules.map(({ _isVirtual: _, _occurrenceDate: __, ...s }) => s)
+  // 런타임 전용 필드 제거 + completed_dates/excluded_dates 기본값 보장
+  const clean = schedules.map(({ _isVirtual: _, _occurrenceDate: __, ...s }) => ({
+    ...s,
+    completed_dates: s.completed_dates ?? [],
+    excluded_dates:  s.excluded_dates  ?? [],
+  }))
   const db = await openDB()
   return txPutAll(db, 'schedules', clean)
 }
 
 export async function cachePutSchedule(schedule: Schedule): Promise<void> {
-  const { _isVirtual: _, _occurrenceDate: __, ...clean } = schedule
+  const { _isVirtual: _, _occurrenceDate: __, ...rest } = schedule
+  const clean = {
+    ...rest,
+    completed_dates: rest.completed_dates ?? [],
+    excluded_dates:  rest.excluded_dates  ?? [],
+  }
   const db = await openDB()
   return txPut(db, 'schedules', clean)
 }

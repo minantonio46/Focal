@@ -20,7 +20,9 @@ const VIEWS: { key: CalView; label: string }[] = [
   { key: 'day',   label: '일' },
 ]
 const MONTH_NAMES = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
-const DOW_KR      = ['일','월','화','수','목','금','토']
+// 월요일 시작: 월 화 수 목 금 토 일
+const DOW_KR_MON  = ['월','화','수','목','금','토','일']
+const DOW_KR      = ['일','월','화','수','목','금','토'] // 일간 뷰 헤더용
 
 type PopoverKind = 'year' | 'month' | 'week' | 'datepicker' | null
 
@@ -39,20 +41,20 @@ function weekNumInCtx(monday: Date, year: number, month: number): number {
   const w1 = week1Monday(year, month)
   return Math.round((monday.getTime() - w1.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1
 }
-/** 새 월요일에 대해 현재 맥락 유지 가능하면 유지, 아니면 월요일의 달로 전환 */
 function resolveCtx(monday: Date, ctx: WeekCtx): WeekCtx {
   const wn  = weekNumInCtx(monday, ctx.year, ctx.month)
   const max = getWeeksInMonth(ctx.year, ctx.month).length
   if (wn >= 1 && wn <= max) return { year: ctx.year, month: ctx.month, weekNum: wn }
-  // 맥락 이탈 → 월요일의 달로 전환
   const y = monday.getFullYear(), m = monday.getMonth()
   return { year: y, month: m, weekNum: weekNumInCtx(monday, y, m) }
 }
 
-// ── 커스텀 달력 그리드용 ─────────────────────────────────────
+// ── 커스텀 달력 그리드용 (월요일 시작) ──────────────────────
 function buildCalendarDays(year: number, month: number): Date[] {
-  const first = new Date(year, month, 1)
-  const start = new Date(year, month, 1 - first.getDay())
+  const first  = new Date(year, month, 1)
+  const dow    = first.getDay()           // 0=일 1=월 … 6=토
+  const offset = dow === 0 ? 6 : dow - 1 // 월요일 시작을 위한 offset
+  const start  = new Date(year, month, 1 - offset)
   return Array.from({ length: 42 }, (_, i) => {
     const d = new Date(start); d.setDate(start.getDate() + i); return d
   })
@@ -64,13 +66,9 @@ function sameDay(a: Date, b: Date) {
 export default function CalendarHeader({
   view, currentDate, onViewChange, onPrev, onNext, onToday, onNavigateTo,
 }: Props) {
-  // ── 주간 뷰 표시 맥락 (동적: 이동 방식에 따라 달라짐) ─────
   const [weekCtx, setWeekCtx] = useState<WeekCtx>(() => getWeekDisplayInfo(currentDate))
   const prevViewRef = useRef(view)
 
-  // 뷰가 week로 전환될 때만 weekCtx 초기화
-  // currentDate의 월 기준으로 주차 계산 (Monday 기준 월이 아님)
-  // 예: 5월 1일(금) → 월요일은 4월 27일이지만 "5월 1주차"로 표시
   useEffect(() => {
     if (view === 'week' && prevViewRef.current !== 'week') {
       const y   = currentDate.getFullYear()
@@ -81,7 +79,7 @@ export default function CalendarHeader({
       setWeekCtx(
         wn >= 1 && wn <= max
           ? { year: y, month: m, weekNum: wn }
-          : getWeekDisplayInfo(currentDate)   // 범위 이탈 시 fallback
+          : getWeekDisplayInfo(currentDate)
       )
     }
     prevViewRef.current = view
@@ -97,7 +95,6 @@ export default function CalendarHeader({
   const day   = currentDate.getDate()
   const dow   = currentDate.getDay()
   const today = new Date()
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
 
   const weeksInCurMonth = getWeeksInMonth(weekCtx.year, weekCtx.month)
 
@@ -116,8 +113,6 @@ export default function CalendarHeader({
     setPopover(kind)
   }
 
-  // ── 주간 뷰 전용 네비게이션 ─────────────────────────────────
-
   function weekNavigate(dir: -1 | 1) {
     const newDate = new Date(currentDate)
     newDate.setDate(currentDate.getDate() + dir * 7)
@@ -127,7 +122,6 @@ export default function CalendarHeader({
   }
 
   function weekGoToday() {
-    const todayMon = mondayOf(today)
     setWeekCtx(getWeekDisplayInfo(today))
     onNavigateTo(today)
   }
@@ -155,8 +149,6 @@ export default function CalendarHeader({
     setPopover(null)
   }
 
-  // ── 월간/일간 뷰 네비게이션 ──────────────────────────────────
-
   function goYear(newYear: number) {
     if (newYear < 2000 || newYear > 2099) return
     if (view === 'month') { onNavigateTo(new Date(newYear, month, 1)) }
@@ -171,8 +163,6 @@ export default function CalendarHeader({
     setPopover(null)
   }
 
-  // ── 달력 피커 ────────────────────────────────────────────────
-
   function pickerPrevMonth() {
     setPickerNav(v => v.month === 0 ? { year: v.year - 1, month: 11 } : { ...v, month: v.month - 1 })
   }
@@ -184,13 +174,11 @@ export default function CalendarHeader({
     setPopover(null)
   }
 
-  // ── 스타일 ──────────────────────────────────────────────────
   const navBtnCls   = 'w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white text-xl transition-colors'
   const titleBtnCls = 'px-1.5 py-0.5 rounded-lg font-bold text-lg text-white hover:bg-gray-700 active:bg-gray-600 transition-colors select-none'
   const popBase     = 'absolute top-full mt-1.5 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 p-3'
   const pickerDays  = buildCalendarDays(pickerNav.year, pickerNav.month)
 
-  // ── 공통 팝오버: 연도 입력 ───────────────────────────────────
   function YearPopover({ onConfirm }: { onConfirm: (y: number) => void }) {
     return (
       <div className={popBase} style={{ width: 168 }}>
@@ -224,7 +212,7 @@ export default function CalendarHeader({
     )
   }
 
-  // ── 커스텀 달력 팝업 ────────────────────────────────────────
+  // 날짜 피커: 월요일 시작, 토=파랑 일=빨강
   const DatePickerPopover = (
     <div className={popBase} style={{ width: 280 }}>
       <div className="flex items-center justify-between mb-3">
@@ -232,9 +220,12 @@ export default function CalendarHeader({
         <span className="text-sm font-semibold text-white">{pickerNav.year}년 {pickerNav.month + 1}월</span>
         <button onClick={pickerNextMonth} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-colors text-lg">›</button>
       </div>
+      {/* 요일 헤더: 월~일 */}
       <div className="grid grid-cols-7 mb-1">
-        {DOW_KR.map((d, i) => (
-          <div key={i} className={`text-center text-xs py-1 font-medium ${i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-gray-500'}`}>{d}</div>
+        {DOW_KR_MON.map((d, i) => (
+          <div key={i} className={`text-center text-xs py-1 font-medium ${
+            i === 5 ? 'text-blue-400' : i === 6 ? 'text-red-400' : 'text-gray-500'
+          }`}>{d}</div>
         ))}
       </div>
       <div className="grid grid-cols-7 gap-0.5">
@@ -242,16 +233,18 @@ export default function CalendarHeader({
           const inMonth = d.getMonth() === pickerNav.month
           const isSel   = sameDay(d, currentDate)
           const isTdy   = sameDay(d, today)
-          const wd      = d.getDay()
+          const wd      = d.getDay() // 0=일 6=토
+          // 그리드 위치: i%7==5 → 토, i%7==6 → 일
+          const colIdx  = i % 7     // 0=월 5=토 6=일
           return (
             <button key={i} onClick={() => pickerSelectDay(d)}
               className={`aspect-square flex items-center justify-center rounded-lg text-sm transition-colors ${
-                isSel    ? 'bg-blue-600 text-white font-semibold'
-                : isTdy  ? 'ring-1 ring-blue-500 text-blue-400 hover:bg-gray-700'
+                isSel      ? 'bg-blue-600 text-white font-semibold'
+                : isTdy    ? 'ring-1 ring-blue-500 text-blue-400 hover:bg-gray-700'
                 : !inMonth ? 'text-gray-600 hover:bg-gray-800'
-                : wd === 0 ? 'text-red-400 hover:bg-gray-700'
-                : wd === 6 ? 'text-blue-400 hover:bg-gray-700'
-                :             'text-gray-300 hover:bg-gray-700'
+                : colIdx === 5 ? 'text-blue-400 hover:bg-gray-700'   // 토
+                : colIdx === 6 ? 'text-red-400 hover:bg-gray-700'    // 일
+                :                'text-gray-300 hover:bg-gray-700'
               }`}>
               {d.getDate()}
             </button>
@@ -265,11 +258,8 @@ export default function CalendarHeader({
     </div>
   )
 
-  // ── 렌더 ────────────────────────────────────────────────────
   return (
     <div ref={containerRef} className="flex items-center gap-3 relative">
-
-      {/* 뷰 전환 */}
       <div className="flex gap-1 bg-gray-800 rounded-lg p-1 flex-shrink-0">
         {VIEWS.map(({ key, label }) => (
           <button key={key} onClick={() => { onViewChange(key); setPopover(null) }}
@@ -279,13 +269,9 @@ export default function CalendarHeader({
         ))}
       </div>
 
-      {/* [‹] [내용] [오늘] [›] */}
       <div className="flex items-center gap-1">
-
-        {/* ‹ */}
         <button onClick={view === 'week' ? () => weekNavigate(-1) : onPrev} className={navBtnCls}>‹</button>
 
-        {/* 월간 뷰 */}
         {view === 'month' && (
           <div className="flex items-baseline gap-0.5">
             <div className="relative">
@@ -299,7 +285,6 @@ export default function CalendarHeader({
           </div>
         )}
 
-        {/* 주간 뷰 — weekCtx 기반 표시 */}
         {view === 'week' && (
           <div className="flex items-baseline gap-0.5">
             <div className="relative">
@@ -329,7 +314,6 @@ export default function CalendarHeader({
           </div>
         )}
 
-        {/* 일간 뷰 */}
         {view === 'day' && (
           <div className="flex items-center gap-1">
             <div className="relative">
@@ -345,15 +329,12 @@ export default function CalendarHeader({
           </div>
         )}
 
-        {/* 오늘 */}
         <button onClick={view === 'week' ? weekGoToday : onToday}
           className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm text-gray-300 transition-colors">
           오늘
         </button>
 
-        {/* › */}
         <button onClick={view === 'week' ? () => weekNavigate(1) : onNext} className={navBtnCls}>›</button>
-
       </div>
     </div>
   )

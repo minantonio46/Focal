@@ -8,6 +8,7 @@ import {
   PX_PER_MIN,
   TOTAL_HEIGHT,
 } from './calendarUtils'
+import { VALID_REPEAT_TYPES, getRepeatTodoDisplayOccurrences } from '../../lib/priorityUtils'
 
 interface Props {
   schedules:        Schedule[]
@@ -118,10 +119,22 @@ export default function WeekView({
 
   const hasAllDay  = schedules.some(s => !s.is_todo && s.is_all_day)
 
-  // 각 요일별 Todo 목록 (start_at 있는 것만)
-  const dayTodos = days.map(day =>
-    getSchedulesForDay(schedules, day).filter(s => s.is_todo)
-  )
+  // 각 요일별 Todo 목록 — 반복 Todo는 해당 날짜 회차 기준으로 완료 상태 표시
+  const dayTodos = days.map(day => {
+    const raw = getSchedulesForDay(schedules, day).filter(s => s.is_todo)
+    return raw.map(s => {
+      if (!VALID_REPEAT_TYPES.has(s.repeat_type)) return s
+      const dateStr = [
+        day.getFullYear(),
+        String(day.getMonth() + 1).padStart(2, '0'),
+        String(day.getDate()).padStart(2, '0'),
+      ].join('-')
+      const occs = getRepeatTodoDisplayOccurrences(s)
+      const occ  = occs.find(o => o.dateStr === dateStr)
+      if (!occ) return null
+      return { ...s, is_completed: occ.isCompleted }
+    }).filter((s): s is Schedule => s !== null)
+  })
   const hasTodos = dayTodos.some(list => list.length > 0)
 
   return (

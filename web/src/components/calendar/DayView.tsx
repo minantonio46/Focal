@@ -7,6 +7,7 @@ import {
   PX_PER_MIN,
   TOTAL_HEIGHT,
 } from './calendarUtils'
+import { VALID_REPEAT_TYPES, getRepeatTodoDisplayOccurrences } from '../../lib/priorityUtils'
 
 interface Props {
   schedules:        Schedule[]
@@ -76,8 +77,35 @@ export default function DayView({
 
   const daySchedules = getSchedulesForDay(schedules, currentDate)
   const allDayEvents = daySchedules.filter(s => !s.is_todo && s.is_all_day)
-  const todos        = daySchedules.filter(s => s.is_todo)
   const layouts      = layoutDayEvents(schedules, currentDate)
+
+  // 반복 Todo를 회차별로 펼쳐서 해당 날짜 회차만 표시
+  const todos = (() => {
+    const raw = daySchedules.filter(s => s.is_todo)
+    const result: (Schedule & { _repeatOccDate?: string; _repeatIsCompleted?: boolean })[] = []
+    for (const s of raw) {
+      if (VALID_REPEAT_TYPES.has(s.repeat_type)) {
+        const occs = getRepeatTodoDisplayOccurrences(s)
+        const dateStr = [
+          currentDate.getFullYear(),
+          String(currentDate.getMonth() + 1).padStart(2, '0'),
+          String(currentDate.getDate()).padStart(2, '0'),
+        ].join('-')
+        // 해당 날짜의 회차만 표시 (없으면 부모 표시 안 함)
+        const occ = occs.find(o => o.dateStr === dateStr)
+        if (occ) result.push({
+          ...s,
+          is_completed: occ.isCompleted,
+          _occurrenceDate: occ.dateStr,
+          _repeatOccDate: occ.dateStr,
+          _repeatIsCompleted: occ.isCompleted,
+        })
+      } else {
+        result.push(s)
+      }
+    }
+    return result
+  })()
 
   // ─── Drag & Drop ─────────────────────────────────────────
 

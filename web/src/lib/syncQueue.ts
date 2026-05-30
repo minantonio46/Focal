@@ -134,15 +134,25 @@ export async function flushQueue(): Promise<FlushResult> {
 
   let successCount = 0
   const conflicts: ConflictError[] = []
+  // 오프라인 임시 ID → 실제 PB ID 매핑 (같은 플러시 세션 내)
+  const idMap = new Map<string, string>()
 
   for (const op of ops) {
     try {
       if (op.type === 'update' && op.baseUpdated) {
+        // update op의 recordId 자체가 임시 ID인 경우 실제 ID로 교체
+        const resolvedRecordId = idMap.get(op.recordId) ?? op.recordId
+        // changedFields 내부의 임시 ID 참조도 교체
+        const resolvedFields: Record<string, unknown> = {}
+        for (const [key, val] of Object.entries(op.changedFields ?? {})) {
+          resolvedFields[key] = (typeof val === 'string' && idMap.has(val)) ? idMap.get(val)! : val
+        }
+
         // ── 충돌 감지: withAuth 밖에서 처리 (ConflictError 가 삼켜지지 않도록) ──
         let serverRecord: Record<string, unknown>
         try {
           serverRecord = await withAuth(() =>
-            pb.collection(op.collection).getOne(op.recordId, { requestKey: null })
+            pb.collection(op.collection).getOne(resolvedRecordId, { requestKey: null })
           ) as Record<string, unknown>
         } catch (fetchErr) {
           if (fetchErr instanceof Error && fetchErr.message.includes('404')) {
@@ -180,9 +190,22 @@ export async function flushQueue(): Promise<FlushResult> {
       } else {
         await withAuth(async () => {
           if (op.type === 'create') {
-            await pb.collection(op.collection).create(op.payload ?? {}, { requestKey: null })
+            // payload 내 임시 ID 참조를 실제 ID로 교체
+            const payload = { ...(op.payload ?? {}) }
+            for (const [tempId, realId] of idMap) {
+              for (const key of Object.keys(payload)) {
+                if (payload[key] === tempId) payload[key] = realId
+              }
+            }
+            const created = await pb.collection(op.collection).create(payload, { requestKey: null })
+            // 임시 ID → 실제 ID 매핑 저장
+            if (op.recordId.startsWith('offline_')) {
+              idMap.set(op.recordId, (created as Record<string, unknown>)['id'] as string)
+            }
           } else if (op.type === 'delete') {
-            await pb.collection(op.collection).delete(op.recordId, { requestKey: null })
+            // 실제 ID로 대체 후 삭제
+            const targetId = idMap.get(op.recordId) ?? op.recordId
+            await pb.collection(op.collection).delete(targetId, { requestKey: null })
           } else {
             // update 이지만 baseUpdated 없는 레거시 항목
             await pb.collection(op.collection).update(

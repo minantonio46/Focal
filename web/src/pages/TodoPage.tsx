@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { fetchSchedules, updateSchedule, deleteSchedule } from '../lib/api'
+import { fetchSchedules, updateSchedule, deleteSchedule, completeTodoOccurrence, uncompleteTodoOccurrence } from '../lib/api'
 import type { Schedule } from '../types'
 import useAppStore from '../stores/useAppStore'
 import TodoItem from '../components/todo/TodoItem'
 import ScheduleFormModal from '../components/modal/ScheduleFormModal'
 import DetailModal from '../components/modal/DetailModal'
 import ConfirmDialog from '../components/modal/ConfirmDialog'
+import { getRepeatTodoDisplayOccurrences, VALID_REPEAT_TYPES, urgencyScore } from '../lib/priorityUtils'
 
 type FilterType = 'incomplete' | 'complete' | 'all'
 type SortType = 'time' | 'score'
@@ -38,6 +39,24 @@ export default function TodoPage() {
   }
 
   async function handleComplete(item: Schedule) {
+    // 반복 Todo: 회차별 완료 처리
+    if (item.is_todo && VALID_REPEAT_TYPES.has(item.repeat_type)) {
+      // _occurrenceDate(가상 인스턴스) 또는 start_at 기준 날짜
+      const occDate = item._occurrenceDate
+        ?? (item.start_at ? item.start_at.slice(0, 10) : '')
+      if (!occDate) return
+      const parentId = item.parent_id || item.id
+      const completedSet = new Set(item.completed_dates ?? [])
+      let updated: Schedule
+      if (completedSet.has(occDate)) {
+        updated = await uncompleteTodoOccurrence(parentId, occDate)
+      } else {
+        updated = await completeTodoOccurrence(parentId, occDate)
+      }
+      setSchedules(schedules.map(s => s.id === updated.id ? updated : s))
+      return
+    }
+    // 비반복 Todo
     const updated = await updateSchedule(item.id, {
       is_completed: !item.is_completed,
       completed_at: !item.is_completed ? new Date().toISOString() : '',
@@ -62,23 +81,36 @@ export default function TodoPage() {
 
   const items = schedules.filter(s => view === 'todo' ? s.is_todo : !s.is_todo)
 
+  // 반복 Todo를 회차별 가상 아이템으로 펼쳐서 목록 생성
+  // (비반복 + 일정은 그대로, 반복 Todo만 회차 표시)
+  const expandedItems: (Schedule & { _repeatOccDate?: string; _repeatIsCompleted?: boolean })[] = []
+  for (const s of items) {
+    if (s.is_todo && VALID_REPEAT_TYPES.has(s.repeat_type)) {
+      const occs = getRepeatTodoDisplayOccurrences(s)
+      for (const occ of occs) {
+        expandedItems.push({
+          ...s,
+          // 회차의 start_at으로 덜려서 정렬/긴급도 계산에 사용
+          start_at: new Date(occ.occMs).toISOString(),
+          // 완료 상태는 회차 기준
+          is_completed: occ.isCompleted,
+          _occurrenceDate: occ.dateStr,
+          _repeatOccDate: occ.dateStr,
+          _repeatIsCompleted: occ.isCompleted,
+        })
+      }
+    } else {
+      expandedItems.push(s)
+    }
+  }
+
   const filtered = view === 'todo'
-    ? items.filter(s => {
+    ? expandedItems.filter(s => {
         if (filter === 'incomplete') return !s.is_completed
         if (filter === 'complete') return s.is_completed
         return true
       })
-    : items
-
-  const urgencyScore = (s: Schedule) => {
-    if (!s.start_at) return 1
-    const diff = new Date(s.start_at).getTime() - Date.now()
-    const days = diff / (1000 * 60 * 60 * 24)
-    if (days <= 1) return 10
-    if (days <= 7) return 7
-    if (days <= 30) return 5
-    return 1
-  }
+    : expandedItems
 
   const sorted = [...filtered].sort((a, b) => {
     if (sort === 'score') {
@@ -94,7 +126,7 @@ export default function TodoPage() {
   const withoutDeadline = sort === 'time' && view === 'todo' ? sorted.filter(s => !s.start_at) : []
 
   return (
-    <div className="p-6 max-w-2xl">
+    <div className="p-6">
       {/* 헤더 */}
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">목록</h2>
@@ -162,7 +194,7 @@ export default function TodoPage() {
         <div className="flex flex-col gap-2">
           {withDeadline.map(item => (
             <TodoItem
-              key={item.id}
+              key={`${item.id}_${item._repeatOccDate ?? 'base'}`}
               item={item}
               categories={categories}
               onComplete={view === 'todo' ? handleComplete : undefined}
@@ -179,7 +211,7 @@ export default function TodoPage() {
               </div>
               {withoutDeadline.map(item => (
                 <TodoItem
-                  key={item.id}
+                  key={`${item.id}_${item._repeatOccDate ?? 'base'}`}
                   item={item}
                   categories={categories}
                   onComplete={view === 'todo' ? handleComplete : undefined}

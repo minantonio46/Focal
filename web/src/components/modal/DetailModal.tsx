@@ -9,25 +9,21 @@ import RepeatDialog from './RepeatDialog'
 import ConfirmDialog from './ConfirmDialog'
 
 interface Props {
-  item:       Schedule
+  item:       Schedule & { _repeatOccDate?: string }
   categories: Category[]
   onClose:    () => void
   onUpdate:   () => void
-  /**
-   * 삭제 완료 신호. id가 비어있으면 그룹 삭제(이미 처리됨) 후 상위에서 reload만.
-   * id가 있으면 단일 삭제 → 상위에서 해당 id를 스토어에서 제거.
-   */
   onDelete:   (id: string) => void
 }
 
 type RepeatEditChoice = 'this' | 'this_and_after' | 'all'
 
 export default function DetailModal({ item, categories, onClose, onUpdate, onDelete }: Props) {
-  const [showEdit, setShowEdit]               = useState(false)
+  const [showEdit, setShowEdit]                   = useState(false)
   const [showConfirmDelete, setShowConfirmDelete] = useState(false)
-  const [repeatDialogMode, setRepeatDialogMode] = useState<'edit' | 'delete' | null>(null)
-  const [pendingEditMode, setPendingEditMode]  = useState<RepeatEditChoice | null>(null)
-  const [isDeleting, setIsDeleting]            = useState(false)
+  const [repeatDialogMode, setRepeatDialogMode]   = useState<'edit' | 'delete' | null>(null)
+  const [pendingEditMode, setPendingEditMode]     = useState<RepeatEditChoice | null>(null)
+  const [isDeleting, setIsDeleting]               = useState(false)
 
   const { settings } = useAppStore()
   const timeFormat = settings?.time_format ?? '24h'
@@ -43,15 +39,20 @@ export default function DetailModal({ item, categories, onClose, onUpdate, onDel
     && !item.is_completed
 
   // 목록 뷰에서 부모 레코드를 직접 열었을 때
-  // (캘린더의 가상 인스턴스가 아니고 parent_id도 없는 순수 부모)
   const isDirectParent = isRepeat && !item._isVirtual && !item.parent_id
 
-  // ── 편집 ────────────────────────────────────────────────
+  // 반복 Todo 목록에서 열릴 때 _repeatOccDate를 _occurrenceDate로 주입
+  // → getRepeatContext가 올바른 회차 날짜를 사용하도록
+  const itemWithOccDate: typeof item = item._repeatOccDate
+    ? { ...item, _occurrenceDate: item._repeatOccDate }
+    : item
+
+  // ── 편집 ──────────────────────────────────────────────
   function handleEditClick() {
     if (isRepeat && !isDirectParent) {
       setRepeatDialogMode('edit')
     } else {
-      setShowEdit(true)  // 직접 부모는 바로 편집 (= 모두 편집)
+      setShowEdit(true)
     }
   }
 
@@ -61,13 +62,10 @@ export default function DetailModal({ item, categories, onClose, onUpdate, onDel
     setShowEdit(true)
   }
 
-  // ── 삭제 ────────────────────────────────────────────────
+  // ── 삭제 ──────────────────────────────────────────────
   function handleDeleteClick() {
     if (isRepeat && !isDirectParent) {
       setRepeatDialogMode('delete')
-    } else if (isDirectParent) {
-      // 목록에서 부모 레코드 직접 삭제 → 전체 삭제 확인
-      setShowConfirmDelete(true)
     } else {
       setShowConfirmDelete(true)
     }
@@ -77,7 +75,7 @@ export default function DetailModal({ item, categories, onClose, onUpdate, onDel
     setShowConfirmDelete(false)
     setIsDeleting(true)
     try {
-      await deleteAllOccurrences({ ...item, parent_id: '', id: item.id } as typeof item)
+      await deleteAllOccurrences(item)
       onDelete('')
     } catch (err) {
       console.error('반복 일정 삭제 실패:', err)
@@ -91,9 +89,9 @@ export default function DetailModal({ item, categories, onClose, onUpdate, onDel
     setIsDeleting(true)
     try {
       if (choice === 'this') {
-        await deleteOccurrence(item)
+        await deleteOccurrence(itemWithOccDate)
       } else if (choice === 'this_and_after') {
-        await deleteFromOccurrence(item)
+        await deleteFromOccurrence(itemWithOccDate)
       } else {
         await deleteAllOccurrences(item)
       }
@@ -109,7 +107,7 @@ export default function DetailModal({ item, categories, onClose, onUpdate, onDel
   if (showEdit) {
     return (
       <ScheduleFormModal
-        editItem={item}
+        editItem={itemWithOccDate}
         repeatEditMode={pendingEditMode ?? undefined}
         onClose={() => { setShowEdit(false); setPendingEditMode(null) }}
         onSave={() => { setShowEdit(false); setPendingEditMode(null); onUpdate() }}
@@ -145,7 +143,6 @@ export default function DetailModal({ item, categories, onClose, onUpdate, onDel
               {isExpired && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">만료</span>
               )}
-              {/* 반복 배지 */}
               {isRepeat && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400">
                   🔁 {item.repeat_type !== 'none' ? REPEAT_TYPE_LABELS[item.repeat_type] : '반복'}
@@ -162,7 +159,6 @@ export default function DetailModal({ item, categories, onClose, onUpdate, onDel
 
           {/* 본문 */}
           <div className="px-5 py-4 flex flex-col gap-3">
-
             {/* 제목 */}
             <div className="pl-3 border-l-4 rounded-r" style={{ borderColor: accentColor }}>
               <h3 className={`text-lg font-semibold leading-snug ${
@@ -277,17 +273,21 @@ export default function DetailModal({ item, categories, onClose, onUpdate, onDel
         />
       )}
 
-      {/* 비반복 삭제 확인 다이얼로그 */}
+      {/* 삭제 확인 다이얼로그 */}
       {showConfirmDelete && (
         <ConfirmDialog
           title={`"${item.title}" 삭제`}
           message={
             isDirectParent
-              ? `반복 일정 그룹 전체(${REPEAT_TYPE_LABELS[item.repeat_type]} 반복)를 삭제합니다.`
+              ? `반복 그룹 전체(${REPEAT_TYPE_LABELS[item.repeat_type]} 반복)를 삭제합니다.`
               : item.is_todo ? 'Todo를 삭제합니다.' : '이 일정을 삭제합니다.'
           }
           confirmLabel="삭제"
-          onConfirm={isDirectParent ? handleDirectParentDelete : () => { setShowConfirmDelete(false); onDelete(item.id) }}
+          onConfirm={
+            isDirectParent
+              ? handleDirectParentDelete
+              : () => { setShowConfirmDelete(false); onDelete(item.id) }
+          }
           onClose={() => setShowConfirmDelete(false)}
         />
       )}
