@@ -9,6 +9,8 @@ node_modules/
 # 빌드 결과물
 dist/
 build/
+dist-release/
+dist-electron/
 
 # 로그
 *.log

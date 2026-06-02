@@ -79,7 +79,7 @@ export async function updateSchedule(id: string, data: Partial<Schedule>): Promi
       collection   : 'schedules',
       recordId     : id,
       changedFields: data as Record<string, unknown>,
-      baseUpdated  : cached?.updated,
+      baseUpdated  : (cached as unknown as Record<string, unknown>)?.['updated'] as string | undefined,
     })
     return updated
   }
@@ -98,6 +98,7 @@ export async function deleteSchedule(id: string): Promise<void> {
     return
   }
   return withAuth(async () => {
+    try { await deleteNotificationsBySchedule(id) } catch { /* ignore */ }
     await pb.collection('schedules').delete(id, { requestKey: null })
     await cacheDeleteSchedule(id)
   })
@@ -142,7 +143,7 @@ export async function updateCategory(id: string, data: Partial<Category>): Promi
       collection   : 'categories',
       recordId     : id,
       changedFields: data as Record<string, unknown>,
-      baseUpdated  : cached?.updated,
+      baseUpdated  : (cached as unknown as Record<string, unknown>)?.['updated'] as string | undefined,
     })
     return updated
   }
@@ -193,7 +194,7 @@ export async function upsertSettings(id: string | undefined, data: Partial<Setti
       collection   : 'settings',
       recordId     : id,
       changedFields: data as Record<string, unknown>,
-      baseUpdated  : cached?.updated,
+      baseUpdated  : (cached as unknown as Record<string, unknown>)?.['updated'] as string | undefined,
     })
     return updated
   }
@@ -269,41 +270,48 @@ export async function deleteNotificationsBySchedule(scheduleId: string): Promise
 /**
  * schedule 의 reminder_mins 배열을 보고 notifications 레코드를 (재)생성
  * - 기존 pending/snoozed 알림 모두 삭제 후 새로 insert
- * - 종일 일정: 하루 전 09:00 UTC 알림만 허용
+ * - 종일 일정: all_day_reminder_time 시각 알림만 허용
+ * - 시간 있는 일정 하루 전: timed_reminder_mode 에 따라 24h 전 or 전날 설정 시각
  * - start_at 없는 Todo: 알림 없음
  */
 export async function syncNotificationsForSchedule(
-  schedule: Schedule
+  schedule: Schedule,
+  settings?: { all_day_reminder_time?: string; timed_reminder_mode?: 'exact' | 'fixed_time' } | null,
 ): Promise<void> {
   if (!schedule.id || !schedule.start_at || schedule.reminder_mins.length === 0) {
-    // start_at 없거나 알림 없으면 기존 알림 정리만
     await deleteNotificationsBySchedule(schedule.id)
     return
   }
 
+  const allDayTime = settings?.all_day_reminder_time ?? '09:00'
+  const timedMode  = settings?.timed_reminder_mode   ?? 'exact'
+  const [alarmHour, alarmMin] = allDayTime.split(':').map(Number)
+
   return withAuth(async () => {
-    // 기존 알림 삭제
     await deleteNotificationsBySchedule(schedule.id)
 
     const startMs = new Date(schedule.start_at).getTime()
     const now     = new Date()
 
     for (const mins of schedule.reminder_mins) {
-      // 종일 일정: 1440분(하루 전) 만 허용
       if (schedule.is_all_day && mins !== 1440) continue
 
       let fireAt: Date
       if (schedule.is_all_day) {
-        // 하루 전 09:00 로컬 시각
-        const startDate = new Date(schedule.start_at)
-        fireAt = new Date(startDate)
+        // 종일 일정: 전날 all_day_reminder_time
+        fireAt = new Date(schedule.start_at)
         fireAt.setDate(fireAt.getDate() - 1)
-        fireAt.setHours(9, 0, 0, 0)
+        fireAt.setHours(alarmHour, alarmMin, 0, 0)
+      } else if (mins === 1440 && timedMode === 'fixed_time') {
+        // 시간 있는 일정 하루 전 + fixed_time 모드: 전날 all_day_reminder_time
+        fireAt = new Date(schedule.start_at)
+        fireAt.setDate(fireAt.getDate() - 1)
+        fireAt.setHours(alarmHour, alarmMin, 0, 0)
       } else {
+        // 기본: 시작 시각 - mins분
         fireAt = new Date(startMs - mins * 60 * 1000)
       }
 
-      // 이미 지난 알림은 생성 안 함
       if (fireAt <= now) continue
 
       await pb.collection('notifications').create({
@@ -533,16 +541,20 @@ export async function deleteAllOccurrences(item: Schedule): Promise<void> {
     const { parentId } = getRepeatContext(item)
     if (!parentId) return
 
-    // 예외 레코드 삭제
+    // 예외 레코드 알림 + 삭제
     try {
       const exceptions = await pb.collection('schedules').getFullList({
         filter: `parent_id="${parentId}"`,
         requestKey: null,
       })
       for (const exc of exceptions) {
+        try { await deleteNotificationsBySchedule(exc.id) } catch { /* ignore */ }
         try { await pb.collection('schedules').delete(exc.id, { requestKey: null }) } catch { /* ignore */ }
       }
     } catch { /* ignore */ }
+
+    // 부모 알림 먼저 삭제
+    try { await deleteNotificationsBySchedule(parentId) } catch { /* ignore */ }
 
     await pb.collection('schedules').delete(parentId, { requestKey: null })
   })

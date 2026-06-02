@@ -46,12 +46,13 @@ export interface SyncOp {
 
 /** 충돌 감지 시 throw 되는 에러 */
 export class ConflictError extends Error {
-  constructor(
-    public readonly op: SyncOp,
-    public readonly serverRecord: Record<string, unknown>,
-  ) {
+  readonly op: SyncOp
+  readonly serverRecord: Record<string, unknown>
+  constructor(op: SyncOp, serverRecord: Record<string, unknown>) {
     super(`Conflict on ${op.collection}/${op.recordId}`)
     this.name = 'ConflictError'
+    this.op = op
+    this.serverRecord = serverRecord
   }
 }
 

@@ -146,36 +146,45 @@
 
 ---
 
-## Phase 9 — 검색 ⬜
+## Phase 9 — 검색 ✅
 
-- [ ] 사이드바 돋보기 → 검색창 UI
-- [ ] 제목 + 메모 전문 검색
-- [ ] 결과 목록 표시 및 클릭 시 모달 이동
-
----
-
-## Phase 10 — 설정 + 카테고리 관리 + UI Polish ⬜
-
-- [ ] Admin UI에서 settings에 `time_format` Select 필드 추가
-- [ ] 설정 화면 (테마 / 시간표시형식 / 알림 / 스누즈 / 삭제기간 / 시간블록단위)
-- [ ] 카테고리 사이드바 화면 (대>소 트리, 이름/색상/중요도 편집, 삭제)
-- [ ] 다크 모드 (시스템 연동 + 수동)
-- [ ] 빈 상태(Empty State) 화면
-- [ ] 로딩 스켈레톤
-- [ ] 전체 UI 일관성 점검
-- [ ] label/input 접근성 (htmlFor/id 연결)
+- [x] 사이드바 돋보기 → 검색창 UI (Ctrl+K / Cmd+K 단축키 지원)
+- [x] 제목 + 메모 전문 검색
+- [x] 결과 목록 표시 및 클릭 시 모달 이동
+- [x] 검색어 하이라이트 (제목 + 메모)
+- [x] 결과 정렬: 제목 일치 우선 → 최신 updated 순
+- [x] 상위 50개 결과 제한
 
 ---
 
-## Phase 11 — Electron 데스크탑 앱 ⬜
+## Phase 10 — 설정 + 카테고리 관리 + UI Polish ✅
 
-- [ ] Electron 프로젝트 설정 및 React 앱 래핑
-- [ ] frameless 창 + 커스텀 타이틀바
-- [ ] 위젯 형태 3종 전환
-- [ ] 항상 위에 표시 토글 (기본: false)
-- [ ] 시스템 트레이 아이콘 + 우클릭 메뉴
-- [ ] 전역 단축키 (Ctrl+Shift+F)
-- [ ] 맥 로그인 시 자동 실행
+- [x] 설정 화면 (테마 / 시간표시형식 / 알림 / 스누즈 / 삭제기간 / 시간블록단위)
+- [x] 카테고리 화면 (대>소 트리, 이름/색상/중요도 편집, 삭제, 인라인 추가)
+- [x] 다크 모드 훅 (`useTheme.ts`): 시스템 연동 + 수동 전환, App.tsx에 연결
+- [x] 빈 상태(Empty State) 공통 컴포넌트 (`EmptyState.tsx`)
+- [x] 로딩 스켈레톤 공통 컴포넌트 (`Skeleton.tsx`)
+- [x] TodoPage 로딩/빈 상태 EmptyState + SkeletonList 적용
+- [x] ConfirmDialog 확장: onCancel 지원, confirmVariant(danger/default), onConfirm 선택적
+- [x] label/input 접근성 (htmlFor/id 연결) — SettingsPage, CategoryPage
+- [x] Admin UI에서 settings에 `time_format` Select 필드 추가 (수동 작업 완료)
+
+---
+
+## Phase 11 — Electron 데스크탑 앱 ✅
+
+- [x] Electron 프로젝트 설정 (`electron/` 디렉토리, package.json, tsconfig)
+- [x] 메인 프로세스 (`main.ts`): 창 생성, 트레이, 단축키, IPC 핸들러
+- [x] Preload 스크립트 (`preload.ts`): contextBridge로 렌더러에 API 노출
+- [x] 위젯 형태 3종: 일반(1280xd7800) / 중형(360xd7600) / 미니(280xd780)
+- [x] 위젯 라우트 (`/widget/medium`, `/widget/mini`) 충 React 앱에 추가
+- [x] 중형 위젯: 오늘 일정 + 미완료 Todo 목록, frameless 커스텀 타이틀바
+- [x] 미니 위젯: 다음 일정 + 미완료 Todo 수, 드래그 가능
+- [x] 일반 모드: Electron 타이틀바 (모드 전환 / 항상 위에 / 자동시작)
+- [x] 트레이 아이콘 + 우클릭 메뉴 (모드 전환, 종료)
+- [x] 전역 단축키 Ctrl+Shift+F — 창 토글
+- [x] Windows 시작 프로그램 자동 실행 지원 (app.setLoginItemSettings)
+- [x] electron-builder Windows NSIS 설치 파일 빌드 설정
 
 ---
 

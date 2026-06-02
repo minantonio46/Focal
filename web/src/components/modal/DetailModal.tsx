@@ -49,10 +49,16 @@ export default function DetailModal({ item, categories, onClose, onUpdate, onDel
 
   // ── 편집 ──────────────────────────────────────────────
   function handleEditClick() {
-    if (isRepeat && !isDirectParent) {
-      setRepeatDialogMode('edit')
-    } else {
+    if (!isRepeat) {
+      // 반복 아닌 일반 일정/Todo → 제한 없이 바로 편집
       setShowEdit(true)
+    } else if (isDirectParent) {
+      // 목록에서 반복 부모 레코드 직접 열릴 때 → 모든 일정 수정
+      setPendingEditMode('all')
+      setShowEdit(true)
+    } else {
+      // 캘린더에서 반복 가상 인스턴스 → 범위 선택 다이얼로그
+      setRepeatDialogMode('edit')
     }
   }
 

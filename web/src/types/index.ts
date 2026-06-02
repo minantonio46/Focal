@@ -25,6 +25,7 @@ export interface Schedule {
   sub_category_id: string  // 없으면 ""
   deadline_precision: 'none' | 'year' | 'month' | 'day' | 'datetime'
   expire_type: 'expire' | 'keep'
+  available_from: string   // Todo 전용: 이 날짜부터 시작 가능. 없으면 ""
   repeat_type: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'
   repeat_days: number[]
   repeat_end_at: string    // 없으면 ""
@@ -61,9 +62,33 @@ export interface Settings {
   schedule_delete_days: number
   calendar_slot_mins: number
   /**
+   * 하루 전 알림 시각 (HH:MM)
+   * 종일 일정 + timed_reminder_mode='fixed_time'일 때 공통 사용. 기본: "09:00"
+   */
+  all_day_reminder_time: string
+  /**
+   * 시간 있는 일정의 하루 전 알림 방식
+   * 'exact'      : 시작 시각 24시간 전 (기본)
+   * 'fixed_time' : 전날 all_day_reminder_time 시각
+   */
+  timed_reminder_mode: 'exact' | 'fixed_time'
+  /**
+   * 긴급도 시간 구간 커스터마이징 (분 단위)
+   * 각 키는 해당 점수의 시간 경계 (= 이 시간 이내면 해당 점수)
+   * 기본값: { s9:60, s8:1440, s7:10080, s6:21600, s5:43200, s4:129600, s3:262080, s2:525960 }
+   */
+  urgency_thresholds?: {
+    s9?: number | null
+    s8?: number | null
+    s7?: number | null
+    s6?: number | null
+    s5?: number | null
+    s4?: number | null
+    s3?: number | null
+    s2?: number | null
+  }
+  /**
    * Phase 10에서 추가 예정: 국가/타임존 설정 (IANA timezone string)
-   * 예: "Asia/Seoul", "America/New_York"
-   * 없으면 브라우저 로컬 타임존 사용
    */
   timezone?: string
 }

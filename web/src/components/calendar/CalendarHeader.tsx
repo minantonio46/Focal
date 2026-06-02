@@ -233,7 +233,7 @@ export default function CalendarHeader({
           const inMonth = d.getMonth() === pickerNav.month
           const isSel   = sameDay(d, currentDate)
           const isTdy   = sameDay(d, today)
-          const wd      = d.getDay() // 0=일 6=토
+          // const wd = d.getDay() // 0=일 6=토
           // 그리드 위치: i%7==5 → 토, i%7==6 → 일
           const colIdx  = i % 7     // 0=월 5=토 6=일
           return (

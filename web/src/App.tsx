@@ -1,11 +1,15 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+
+const isElectronProd = window.electronAPI !== undefined && !window.location.href.startsWith('http')
+const Router = isElectronProd ? HashRouter : BrowserRouter
 import Layout from './components/layout/Layout'
 import TodoPage from './pages/TodoPage'
 import CalendarPage from './pages/CalendarPage'
 import PriorityPage from './pages/PriorityPage'
-import CategoryPage from './pages/CategoryPage'
 import SettingsPage from './pages/SettingsPage'
+import WidgetMedium from './pages/widget/WidgetMedium'
+import WidgetMini from './pages/widget/WidgetMini'
 import { initAuth } from './lib/pocketbase'
 import {
   startNotificationPoller,
@@ -14,10 +18,14 @@ import {
 } from './lib/notificationService'
 import { initOfflineManager, destroyOfflineManager } from './lib/offlineManager'
 import { cacheGetSchedules, cacheGetCategories, cacheGetSettings } from './lib/offlineCache'
+import { useTheme } from './lib/useTheme'
 import useAppStore from './stores/useAppStore'
 
 export default function App() {
   const { setCategories, setSettings, setSchedules, schedules, settings } = useAppStore()
+
+  // 테마 적용
+  useTheme(settings?.theme)
 
   useEffect(() => {
     async function init() {
@@ -57,17 +65,20 @@ export default function App() {
   }, [schedules, settings?.snooze_minutes])
 
   return (
-    <BrowserRouter>
+    <Router>
       <Routes>
+        {/* 위젯 모드 — Layout 없이 독립 렌더 */}
+        <Route path="/widget/medium" element={<WidgetMedium />} />
+        <Route path="/widget/mini"   element={<WidgetMini />} />
+
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to="/todo" replace />} />
           <Route path="todo"     element={<TodoPage />} />
           <Route path="calendar" element={<CalendarPage />} />
           <Route path="priority" element={<PriorityPage />} />
-          <Route path="category" element={<CategoryPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>
-    </BrowserRouter>
+    </Router>
   )
 }

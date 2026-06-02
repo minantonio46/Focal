@@ -17,17 +17,7 @@
 
 import { fetchPendingNotifications, updateNotification } from './api'
 import type { Notification } from '../types'
-
-// ─── Electron IPC 타입 (Phase 11 전까지 optional) ────────────────
-interface ElectronAPI {
-  showNotification: (title: string, body: string) => void
-}
-
-declare global {
-  interface Window {
-    electronAPI?: ElectronAPI
-  }
-}
+import './electron' // Window.electronAPI 타입 선언 로드
 
 // ─── 웹 알림 권한 요청 ────────────────────────────────────────────
 export async function requestNotificationPermission(): Promise<boolean> {

@@ -22,7 +22,7 @@ export default function MonthView({
   onSelectDate,
 }: Props) {
   const grid  = getMonthGrid(currentDate.getFullYear(), currentDate.getMonth())
-  const today = new Date()
+  // const today = new Date()
 
   function getCategoryColor(s: Schedule): string {
     const cat = s.sub_category_id

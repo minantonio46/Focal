@@ -137,6 +137,61 @@ export function toLocalDateStr(d: Date): string {
 /** 유효한 repeat_type 집합 — 이 값 외에는 무한루프 위험 */
 export const VALID_REPEAT_TYPES = new Set<Schedule['repeat_type']>(['daily', 'weekly', 'monthly', 'yearly'])
 
+/**
+ * 반복 일정/Todo의 마지막 회차가 현재 시각보다 이전인지 여부
+ */
+export function isRepeatEnded(s: Schedule): boolean {
+  if (!VALID_REPEAT_TYPES.has(s.repeat_type)) return false
+  if (!s.start_at) return false
+  const now = new Date()
+
+  // repeat_end_at 기준
+  if (s.repeat_end_at) {
+    return new Date(s.repeat_end_at) < now
+  }
+
+  // repeat_count 기준: 마지막 발생일 계산
+  if (s.repeat_count && s.repeat_count > 0) {
+    let cur = new Date(s.start_at)
+    const originalDay = cur.getDate()
+    let count = 1
+    while (count < s.repeat_count) {
+      const type = s.repeat_type
+      const n = new Date(cur)
+      if (type === 'daily')  { n.setDate(n.getDate() + 1) }
+      else if (type === 'weekly') {
+        if (s.repeat_days?.length) {
+          const sorted = [...s.repeat_days].sort((a, b) => a - b)
+          const dow = n.getDay()
+          const nextDow = sorted.find(d => d > dow)
+          const daysAhead = nextDow !== undefined ? nextDow - dow : 7 - dow + sorted[0]
+          n.setDate(n.getDate() + daysAhead)
+        } else { n.setDate(n.getDate() + 7) }
+      }
+      else if (type === 'monthly') {
+        n.setDate(1); n.setMonth(n.getMonth() + 1)
+        n.setDate(Math.min(originalDay, new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate()))
+      }
+      else if (type === 'yearly') {
+        n.setDate(1); n.setFullYear(n.getFullYear() + 1)
+        n.setDate(Math.min(originalDay, new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate()))
+      }
+      if (n.getTime() <= cur.getTime()) break
+      cur = n
+      count++
+    }
+    // 마지막 회차의 end_at 추정: 원본 duration 적용
+    const durationMs = s.end_at
+      ? new Date(s.end_at).getTime() - new Date(s.start_at).getTime()
+      : 0
+    const lastEnd = new Date(cur.getTime() + Math.max(durationMs, 0))
+    return lastEnd < now
+  }
+
+  // 무기한 반복은 종료 안 됨
+  return false
+}
+
 /** 무한루프 방지 최대 발생 횟수 */
 const MAX_OCCURRENCES = 5_000
 
@@ -233,7 +288,7 @@ function getOccurrencesInRange(
   const originalDay = first.getDate()
 
   function advanceOne(d: Date): Date {
-    if (type !== 'monthly' && type !== 'yearly') return advance(d, type)
+    if (type !== 'monthly' && type !== 'yearly') return advance(d, type as 'daily' | 'weekly')
 
     const n = new Date(d)
     n.setDate(1)                          // 1일로 이동 후 월 변경 (overflow 방지)

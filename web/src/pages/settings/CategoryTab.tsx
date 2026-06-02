@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
-import useAppStore from '../stores/useAppStore'
-import { createCategory, updateCategory, deleteCategory, fetchCategories, updateSchedule } from '../lib/api'
-import type { Category } from '../types'
-import ConfirmDialog from '../components/modal/ConfirmDialog'
+import useAppStore from '../../stores/useAppStore'
+import { createCategory, updateCategory, deleteCategory, fetchCategories, updateSchedule } from '../../lib/api'
+import type { Category } from '../../types'
+import ConfirmDialog from '../../components/modal/ConfirmDialog'
 
 const DEFAULT_COLORS = [
   '#3B82F6', '#8B5CF6', '#10B981', '#F97316', '#EF4444',
@@ -11,21 +11,14 @@ const DEFAULT_COLORS = [
 
 type ImportanceApplyMode = 'future' | 'all' | 'relative'
 
-// ─── 중요도 적용 방식 선택 다이얼로그 ────────────────────────────────────────
-
-interface ImportanceDialogProps {
-  title: string
-  description: string
-  oldImportance: number
-  newImportance: number
+function ImportanceDialog({ title, description, oldImportance, newImportance, onSelect, onCancel }: {
+  title: string; description: string
+  oldImportance: number; newImportance: number
   onSelect: (mode: ImportanceApplyMode) => void
   onCancel: () => void
-}
-
-function ImportanceDialog({ title, description, oldImportance, newImportance, onSelect, onCancel }: ImportanceDialogProps) {
+}) {
   const diff = newImportance - oldImportance
   const diffLabel = diff > 0 ? `+${diff}` : `${diff}`
-
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4" onClick={onCancel}>
       <div className="bg-gray-900 rounded-xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -56,24 +49,16 @@ function ImportanceDialog({ title, description, oldImportance, newImportance, on
   )
 }
 
-// ─── 인라인 편집 폼 ──────────────────────────────────────────────────────────
-
-interface CategoryFormProps {
-  initialName?: string
-  initialColor?: string
-  initialImportance?: number
+function CategoryForm({ initialName = '', initialColor = DEFAULT_COLORS[0], initialImportance = 5, onSave, onCancel, saveLabel = '추가' }: {
+  initialName?: string; initialColor?: string; initialImportance?: number
   onSave: (name: string, color: string, importance: number) => Promise<void>
-  onCancel: () => void
-  saveLabel?: string
-}
-
-function CategoryForm({ initialName = '', initialColor = DEFAULT_COLORS[0], initialImportance = 5, onSave, onCancel, saveLabel = '추가' }: CategoryFormProps) {
+  onCancel: () => void; saveLabel?: string
+}) {
   const [name, setName]             = useState(initialName)
   const [color, setColor]           = useState(initialColor)
   const [importance, setImportance] = useState(initialImportance)
   const [saving, setSaving]         = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-
   useEffect(() => { inputRef.current?.focus() }, [])
 
   async function handleSave() {
@@ -83,14 +68,10 @@ function CategoryForm({ initialName = '', initialColor = DEFAULT_COLORS[0], init
     finally { setSaving(false) }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') handleSave()
-    if (e.key === 'Escape') onCancel()
-  }
-
   return (
     <div className="bg-gray-800 rounded-xl p-4 space-y-3">
-      <input ref={inputRef} type="text" value={name} onChange={e => setName(e.target.value)} onKeyDown={handleKeyDown}
+      <input ref={inputRef} type="text" value={name} onChange={e => setName(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') onCancel() }}
         placeholder="카테고리 이름" className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 placeholder-gray-500 outline-none focus:ring-1 focus:ring-blue-500" />
       <div>
         <p className="text-xs text-gray-500 mb-2">색상</p>
@@ -98,7 +79,7 @@ function CategoryForm({ initialName = '', initialColor = DEFAULT_COLORS[0], init
           {DEFAULT_COLORS.map(c => (
             <button key={c} onClick={() => setColor(c)}
               className={`w-6 h-6 rounded-full transition-transform ${color === c ? 'ring-2 ring-white scale-110' : 'hover:scale-110'}`}
-              style={{ backgroundColor: c }} title={c} />
+              style={{ backgroundColor: c }} />
           ))}
         </div>
       </div>
@@ -117,15 +98,11 @@ function CategoryForm({ initialName = '', initialColor = DEFAULT_COLORS[0], init
   )
 }
 
-// ─── 소카테고리 아이템 ────────────────────────────────────────────────────────
-
-interface SubCatItemProps {
+function SubCategoryItem({ cat, onUpdate, onDelete }: {
   cat: Category
   onUpdate: (id: string, name: string, color: string, importance: number) => Promise<void>
   onDelete: (cat: Category) => void
-}
-
-function SubCategoryItem({ cat, onUpdate, onDelete }: SubCatItemProps) {
+}) {
   const [editing, setEditing] = useState(false)
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-800/50 rounded-lg transition-colors">
@@ -150,19 +127,14 @@ function SubCategoryItem({ cat, onUpdate, onDelete }: SubCatItemProps) {
   )
 }
 
-// ─── 대카테고리 카드 ─────────────────────────────────────────────────────────
-
-interface ParentCatCardProps {
-  parent: Category
-  children: Category[]
+function ParentCategoryCard({ parent, children, onUpdateParent, onDeleteParent, onAddChild, onUpdateChild, onDeleteChild }: {
+  parent: Category; children: Category[]
   onUpdateParent: (id: string, name: string, color: string, importance: number) => Promise<void>
   onDeleteParent: (cat: Category) => void
   onAddChild: (parentId: string, name: string, color: string, importance: number) => Promise<void>
   onUpdateChild: (id: string, name: string, color: string, importance: number) => Promise<void>
   onDeleteChild: (cat: Category) => void
-}
-
-function ParentCategoryCard({ parent, children, onUpdateParent, onDeleteParent, onAddChild, onUpdateChild, onDeleteChild }: ParentCatCardProps) {
+}) {
   const [expanded, setExpanded]           = useState(true)
   const [editingParent, setEditingParent] = useState(false)
   const [addingChild, setAddingChild]     = useState(false)
@@ -177,7 +149,7 @@ function ParentCategoryCard({ parent, children, onUpdateParent, onDeleteParent, 
         </div>
       ) : (
         <div className="flex items-center gap-3 px-4 py-3">
-          <button onClick={() => setExpanded(v => !v)} className="text-gray-500 hover:text-white text-xs w-4 transition-colors" aria-label={expanded ? '접기' : '펼치기'}>
+          <button onClick={() => setExpanded(v => !v)} className="text-gray-500 hover:text-white text-xs w-4 transition-colors">
             {expanded ? '▾' : '▸'}
           </button>
           <span className="w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: parent.color }} />
@@ -211,8 +183,6 @@ function ParentCategoryCard({ parent, children, onUpdateParent, onDeleteParent, 
   )
 }
 
-// ─── 메인 페이지 ─────────────────────────────────────────────────────────────
-
 interface ParentEditContext {
   catId: string; catName: string
   oldImportance: number; newImportance: number
@@ -220,15 +190,15 @@ interface ParentEditContext {
   children: Category[]
 }
 
-export default function CategoryPage() {
+export default function CategoryTab() {
   const { categories, setCategories, schedules, setSchedules } = useAppStore()
-  const [addingParent, setAddingParent] = useState(false)
-  const [deleteTarget, setDeleteTarget]             = useState<Category | null>(null)
-  const [deleteError, setDeleteError]               = useState('')
+  const [addingParent, setAddingParent]         = useState(false)
+  const [deleteTarget, setDeleteTarget]         = useState<Category | null>(null)
+  const [deleteError, setDeleteError]           = useState('')
   const [deleteWithChildren, setDeleteWithChildren] = useState(false)
-  const [parentEditCtx, setParentEditCtx]   = useState<ParentEditContext | null>(null)
-  const [parentEditStep, setParentEditStep] = useState<'sub_cat' | 'parent_only_schedules' | null>(null)
-  const [subEditCtx, setSubEditCtx] = useState<{ catId: string; catName: string; oldImportance: number; newImportance: number; name: string; color: string } | null>(null)
+  const [parentEditCtx, setParentEditCtx]       = useState<ParentEditContext | null>(null)
+  const [parentEditStep, setParentEditStep]     = useState<'sub_cat' | 'parent_only_schedules' | null>(null)
+  const [subEditCtx, setSubEditCtx]             = useState<{ catId: string; catName: string; oldImportance: number; newImportance: number; name: string; color: string } | null>(null)
 
   const parents  = categories.filter(c => !c.parent_id).sort((a, b) => a.order - b.order)
   const childMap = new Map<string, Category[]>()
@@ -241,7 +211,7 @@ export default function CategoryPage() {
   }
 
   async function reload() { setCategories(await fetchCategories()) }
-  function nextOrder() { return (categories.reduce((m, c) => Math.max(m, c.order), 0)) + 1 }
+  function nextOrder() { return categories.reduce((m, c) => Math.max(m, c.order), 0) + 1 }
 
   async function applyToSchedules(targetIds: string[], mode: ImportanceApplyMode, newBase: number, diff: number) {
     if (mode === 'future' || targetIds.length === 0) return
@@ -332,19 +302,17 @@ export default function CategoryPage() {
       if (children.length > 0) { setDeleteWithChildren(true); setDeleteError(`소카테고리 ${children.length}개도 함께 삭제됩니다.`); return }
     }
     try {
-      if (isParent) { for (const child of categories.filter(c => c.parent_id === deleteTarget.id)) await deleteCategory(child.id) }
+      if (isParent) for (const child of categories.filter(c => c.parent_id === deleteTarget.id)) await deleteCategory(child.id)
       await deleteCategory(deleteTarget.id)
       await reload()
       setDeleteTarget(null); setDeleteWithChildren(false); setDeleteError('')
     } catch { setDeleteError('삭제에 실패했습니다.') }
   }
 
-  function cancelParentEdit() { setParentEditCtx(null); setParentEditStep(null) }
-
   return (
-    <div className="p-6 h-full overflow-y-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-white">카테고리</h2>
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-500">카테고리를 관리합니다.</p>
         {!addingParent && (
           <button onClick={() => setAddingParent(true)}
             className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors">
@@ -359,7 +327,7 @@ export default function CategoryPage() {
         </div>
       )}
 
-      <div className="space-y-3">
+      <div className="space-y-3 pb-8">
         {parents.length === 0 && !addingParent && (
           <div className="text-center py-12 text-gray-500">
             <p className="text-4xl mb-3">🏷️</p>
@@ -377,7 +345,7 @@ export default function CategoryPage() {
 
       {deleteTarget && (
         <ConfirmDialog
-          message={deleteError ? deleteError : `"${deleteTarget.name}" 카테고리를 삭제하시겠습니까?${!deleteTarget.parent_id ? '\n이 카테고리를 사용하는 일정의 카테고리 정보가 초기화됩니다.' : ''}`}
+          message={deleteError || `"${deleteTarget.name}" 카테고리를 삭제하시겠습니까?${!deleteTarget.parent_id ? '\n이 카테고리를 사용하는 일정의 카테고리 정보가 초기화됩니다.' : ''}`}
           onConfirm={deleteError && !deleteWithChildren ? undefined : confirmDelete}
           onCancel={() => { setDeleteTarget(null); setDeleteError(''); setDeleteWithChildren(false) }}
           confirmLabel="삭제" confirmVariant="danger" />
@@ -387,16 +355,14 @@ export default function CategoryPage() {
         <ImportanceDialog title="소카테고리 기본 중요도 재적용"
           description={`"${parentEditCtx.catName}" 하위 소카테고리 ${parentEditCtx.children.length}개의 기본 중요도를 어떻게 처리할까요?`}
           oldImportance={parentEditCtx.oldImportance} newImportance={parentEditCtx.newImportance}
-          onSelect={handleSubCatImportanceMode} onCancel={cancelParentEdit} />
+          onSelect={handleSubCatImportanceMode} onCancel={() => { setParentEditCtx(null); setParentEditStep(null) }} />
       )}
-
       {parentEditCtx && parentEditStep === 'parent_only_schedules' && (
         <ImportanceDialog title="목록 중요도 재적용"
           description={`"${parentEditCtx.catName}"만 설정된 목록 ${schedules.filter(s => s.category_id === parentEditCtx.catId && !s.sub_category_id).length}개의 중요도를 어떻게 처리할까요?`}
           oldImportance={parentEditCtx.oldImportance} newImportance={parentEditCtx.newImportance}
-          onSelect={handleParentOnlySchedulesMode} onCancel={cancelParentEdit} />
+          onSelect={handleParentOnlySchedulesMode} onCancel={() => { setParentEditCtx(null); setParentEditStep(null) }} />
       )}
-
       {subEditCtx && (
         <ImportanceDialog title="목록 중요도 재적용"
           description={`"${subEditCtx.catName}" 소카테고리가 설정된 목록 ${schedules.filter(s => s.sub_category_id === subEditCtx.catId).length}개의 중요도를 어떻게 처리할까요?`}
